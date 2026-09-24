@@ -1,4 +1,4 @@
-﻿<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>A股看板 · 2026-09-24</title>
 <link rel="manifest" href="./manifest.webmanifest">
@@ -194,10 +194,34 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 </button>
 <button class="themebtn pwabtn" id="pwaBtn" type="button" title="安装到桌面" hidden style="top:46px">⬇ 安装</button>
 <div class="pwatip" id="pwaTip" hidden>iPhone/iPad：点「分享」→「添加到主屏幕」，可全屏离线查看</div>
-<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/24 19:18:21</div>
+<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/24 19:34:04</div>
 <div class="kpis"><div class="kpi"><div class="l">涨停家数</div><div class="v"><span class="up">52</span></div><div class="d">较前日 <span class="up">+1</span></div></div><div class="kpi"><div class="l">跌停家数</div><div class="v"><span class="down">13</span></div><div class="d">较前日 <span class="up">+0</span></div></div><div class="kpi"><div class="l">两市成交额</div><div class="v">1.65<span class="u">万亿</span></div><div class="d">较前日 <span class="down">-1116</span> 亿</div></div><div class="kpi"><div class="l">上证指数</div><div class="v">3888.37</div><div class="d">较前日 <span class="down">-48.15</span></div></div></div>
 
-
+<div class="panel" data-panel="signal"><div class="phead"><h2>明日开盘应对 <span class="hint">T 日状态 × T+1 集合竞价跳空 · 开盘后自动更新</span></h2>
+    <span class="hint" id="sigStamp">等待竞价…</span></div>
+  <div class="sgrid">
+    <div>
+      <div class="sect">T 日状态（2026-09-23 收盘）</div>
+      <table class="stbl">
+        <tr><th>指数</th><th>T 日涨跌</th><th>量能(÷20日均)</th><th>档位</th></tr>
+        <tr><td>上证指数</td><td class="down">-0.39%</td><td>0.92× <span class="tiny">缩量</span></td><td style="color:#7b8698">不够极端</td></tr><tr><td>深证成指</td><td class="down">-0.64%</td><td>0.92× <span class="tiny">缩量</span></td><td style="color:#43d19a">弱</td></tr><tr><td>创业板指</td><td class="down">-0.60%</td><td>0.93× <span class="tiny">缩量</span></td><td style="color:#43d19a">弱</td></tr><tr><td>沪深300</td><td class="down">-0.60%</td><td>0.77× <span class="tiny">缩量</span></td><td style="color:#43d19a">弱</td></tr>
+      </table>
+      <div class="sect" style="margin-top:8px">竞价跳空后的建议（上证口径）</div>
+      <div id="sigDecision" class="sigbox">竞价数据将在开盘后自动获取；下方是条件清单。</div>
+    </div>
+    <div>
+      <div class="sect">条件清单（按 T 日状态预演）</div>
+      <table class="stbl" id="sigPlaybook">
+        <tr><th>情形</th><th>建议</th><th>历史期望</th><th>时段一致</th></tr>
+        <tr><td>若高开 &gt; +1%</td><td style="color:#7b8698">观望</td><td>—</td><td>—</td></tr><tr><td>若低开 &lt; -1%</td><td style="color:#7b8698">观望</td><td>—</td><td>—</td></tr><tr><td>若平开 ±1% 内</td><td style="color:#7b8698">观望</td><td>—</td><td>—</td></tr>
+      </table>
+      <div class="tiny" style="margin-top:6px;line-height:1.6">
+        期望值口径：<b>偏减仓</b>为「开盘卖出、收盘买回」的收益；<b>持有/偏持有</b>为日内（开→收）收益。均未扣成本（往返约 0.12%）。
+      </div>
+    </div>
+  </div>
+  <div class="foot" id="sigFoot">读秒中…</div>
+</div>
 
 <div class="panel" data-panel="intra"><div class="phead"><h2>三大指数 45 日 5 分钟线 <span class="hint">07/24 → 09/24 · 45 个交易日 · 近 45 日用 5 分钟档，更早的几天由 15 分钟档补齐</span></h2>
     <span class="hint">上：累计涨跌幅（区间首点为基准）· 下：每日归零（当日首点为基准）· 两图缩放与拖动联动</span></div>
