@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+﻿<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>A股看板 · 2026-09-24</title>
 <link rel="manifest" href="./manifest.webmanifest">
@@ -129,6 +129,36 @@ h1{margin-right:96px}
 .pwatip{position:fixed;top:12px;right:16px;z-index:29;max-width:260px;background:var(--card);border:1px solid var(--line);
   border-radius:8px;padding:6px 10px;font-size:11px;color:var(--dim);box-shadow:0 2px 10px rgba(0,0,0,.3)}
 .pwatip[hidden]{display:none}
+/* ==================== 顶部日期滚轮 ==================== */
+.rollerbar{display:flex;align-items:stretch;gap:6px;margin:0 0 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 6px}
+.rollerbar[hidden]{display:none}
+.rnav{flex:0 0 auto;width:26px;border:1px solid var(--line);background:var(--bg);color:var(--dim);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;font-family:inherit}
+.rnav:hover{color:var(--fg);border-color:#5b8def}
+.rstrip{flex:1 1 auto;display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding:1px}
+.rstrip::-webkit-scrollbar{height:5px}
+.rstrip::-webkit-scrollbar-thumb{background:#39414f;border-radius:3px}
+.rchip{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:0;min-width:52px;
+  background:#232b3c;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit}
+.rchip b{font-size:11.5px;font-weight:600;color:var(--fg);line-height:1.25}
+.rchip em{font-style:normal;font-size:9px;color:#5b6478}
+.rchip:hover{border-color:#5b8def}
+.rchip.on{background:#2f4a7a;border-color:#5b8def}
+.rchip.on b,.rchip.on em{color:#dbe6ff}
+.rchip i{position:absolute;top:3px;right:4px;width:5px;height:5px;border-radius:50%}
+.rchip i.pm{background:#f59e0b}
+.rchip i.both{background:#5b8def}
+.rcount{flex:0 0 auto;align-self:center;font-size:10px;color:#5b6478;padding:0 4px}
+.pushcard{background:var(--inset,#161c29);border:1px solid var(--line);border-left:2px solid #5b8def;border-radius:6px;padding:7px 10px;margin-bottom:7px}
+.pushcard.premarket{border-left-color:#f59e0b}
+.pushcard .pc-h{font-size:11px;font-weight:600;color:#c3ccdb;margin-bottom:4px;display:flex;gap:8px;align-items:baseline}
+.pushcard .pc-h span{font-weight:400;color:#5b6478;font-size:10px}
+.pushcard pre{margin:0;font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:11.5px;line-height:1.75;color:#aeb8c8;white-space:pre-wrap;word-break:break-word}
+html[data-theme="light"] .rchip{background:#eef1f7}
+html[data-theme="light"] .rchip.on{background:#dbe6ff;border-color:#5b8def}
+html[data-theme="light"] .rchip.on b,html[data-theme="light"] .rchip.on em{color:#1d4ed8}
+html[data-theme="light"] .pushcard{background:#f7f9fc}
+html[data-theme="light"] .pushcard .pc-h{color:#2b3446}
+html[data-theme="light"] .pushcard pre{color:#3d4757}
 /* 控件与文本的日间配色（数据色 --up/--down/--blue 及各档位色两套主题保持一致） */
 html[data-theme="light"] .panel h2,
 html[data-theme="light"] .sub2,
@@ -186,6 +216,17 @@ html[data-theme="light"] [stroke="#2a3140"]{stroke:#e1e6ee}
 html[data-theme="light"] [stroke="#4a5568"]{stroke:#cbd3e0}
 html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 </style></head><body>
+<div class="rollerbar" id="rollerBar">
+  <button class="rnav" id="rPrev" type="button" title="前一天">‹</button>
+  <div class="rstrip" id="rStrip"></div>
+  <button class="rnav" id="rNext" type="button" title="后一天">›</button>
+  <span class="rcount" id="rCount"></span>
+</div>
+<div class="panel" data-panel="pushlog" id="pushPanel" hidden>
+  <div class="phead"><h2>历史推送 <span class="hint" id="pushDate"></span></h2>
+    <span class="hint">点上方日期切换 · 再点一次收起 · 键盘 ← → 也可翻</span></div>
+  <div id="pushBody"></div>
+</div>
 <h1>A股情绪与事件看板</h1>
 <button class="themebtn" id="themeBtn" type="button" title="切换昼夜模式" aria-label="切换昼夜模式">
   <svg class="i-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -194,7 +235,7 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 </button>
 <button class="themebtn pwabtn" id="pwaBtn" type="button" title="安装到桌面" hidden style="top:46px">⬇ 安装</button>
 <div class="pwatip" id="pwaTip" hidden>iPhone/iPad：点「分享」→「添加到主屏幕」，可全屏离线查看</div>
-<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/24 19:34:04</div>
+<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/24 19:41:36</div>
 <div class="kpis"><div class="kpi"><div class="l">涨停家数</div><div class="v"><span class="up">52</span></div><div class="d">较前日 <span class="up">+1</span></div></div><div class="kpi"><div class="l">跌停家数</div><div class="v"><span class="down">13</span></div><div class="d">较前日 <span class="up">+0</span></div></div><div class="kpi"><div class="l">两市成交额</div><div class="v">1.65<span class="u">万亿</span></div><div class="d">较前日 <span class="down">-1116</span> 亿</div></div><div class="kpi"><div class="l">上证指数</div><div class="v">3888.37</div><div class="d">较前日 <span class="down">-48.15</span></div></div></div>
 
 <div class="panel" data-panel="signal"><div class="phead"><h2>明日开盘应对 <span class="hint">T 日状态 × T+1 集合竞价跳空 · 开盘后自动更新</span></h2>
@@ -1571,6 +1612,99 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 </div>
 <div class="prestore" id="prestore" hidden><b>已隐藏的面板</b><div id="prestoreList"></div></div>
 <script>window.PDESC = {"signal":{"title":"明日开盘应对（盘前信号）","html":"<b>逻辑</b>：T 日状态 × T+1 集合竞价跳空 → T+1 开盘应对。两个条件在 <b>T+1 集合竞价结束（09:25）时都已观测到</b>，所以可执行；T+1 下「卖出手上已有持仓、收盘再买回」合法，赚的是<b>开盘→收盘</b>的回落。<br>\n<b>依据</b>：16 年 × 4 指数 × 15876 个 (T, T+1) 对。核心是<b>交互效应</b>——跳空本身几乎没有信息（低开→高开的跨度只有 −0.11%），必须叠加 T 日状态才显现：<b>弱市高开跨度 −0.95%，强市高开跨度 +0.97%</b>。中间状态（中性）历史上无边缘（各时段方向仅 2/4 一致）。<br>\n<b>T 日状态用两个维度</b>（相关系数 0.22，基本独立）：涨跌幅（±0.5% 分档）与成交额 ÷ 20 日均值（0.9 / 1.15 分档）。<br>\n<b>分时代一致性</b>：弱+高开 4/4、弱+缩量+高开 4/4、强(≥+1%)+高开 4/4、强+放量+高开 3/3、弱+低开 4/4 时段方向一致。作为对照，早先那个「无条件高开低走」效应在 2019-2021 直接翻负。<br>\n<b>阈值不是拟合出来的</b>：弱势阈值从 −0.2% 到 −1.5% 全程单调且几乎全 4/4（−0.2%: −0.37%、−0.5%: −0.42%、−1.0%: −0.48%）；跳空阈值也是干净的量效关系（+0.8%: −0.17% → +1.5%: −0.91% → +2.0%: −1.84%）。但强势侧 +0.5% 只有 3/4、+1.0% 才 4/4，故强弱阈值取不对称（−0.5% / +1.0%）。<br>\n<b>⚠️ 局限</b>：① 频率低，单指数约 1.5~3 次/年；② 期望值未扣成本（往返约 0.12%）；③ 强市侧只有 3/4 时段一致，弱市侧更可靠；④ 样本是指数层面，个股会被平均掉。"},"intra":{"title":"三大指数 45 日 5 分钟线","html":"<b>数据源</b>：新浪 <code>getKLineData</code>。该接口一次请求上限约 1950~1990 根 —— <code>scale=5&datalen=1950</code> 覆盖 41 个交易日，更早的几天用 <code>scale=15&datalen=900</code>（50 个交易日）补齐，所以窗口最老那几天是 15 分钟粒度，图上呈阶梯状。<br>\n<b>为什么不用别的</b>：腾讯 <code>minute/query</code> 与 <code>day/query</code> <b>都会忽略 date 参数</b>，只返回最近 1 天 / 5 天；同花顺 5 分钟档对 <code>sh_</code>（沪市）代码返回 502；东财 kline 常被限流（有降级路径）。<br>\n<b>口径</b>：日切为 09:35-11:30 / 13:05-15:00 共 48 档，每档取「时间 ≤ 档位」的末值。<b>「中证2000」用中证2000ETF华泰柏瑞(sh563300)代理</b>，存在小幅跟踪误差与折溢价；<b>「同花顺全A(沪深京)」</b>取同花顺自编指数 883957 —— 该接口对<b>当日有滞后（只写 1 根）</b>，已用当日 1 分钟分时（241 点）自动补齐。<br>\n<b>极值标注</b>取上证指数在<b>当前视野</b>内的最高/最低<b>5 分钟收盘价</b>，并在该价位<b>横贯全图画出水平虚线</b>作为参考线；随缩放平移实时重算。注意是 5 分钟收盘价而非分笔瞬时高低，与行情软件的「最高价」可能差几分钱。<br>\n<b>交互</b>：<b>上下两张图共享同一横向视野</b> —— 滚轮缩放（鼠标位置为锚点）、拖拽平移、双击复位在任一图上操作，另一张同步变化；十字准线的竖线同时出现在两张图上（横线与左轴数值只画在鼠标所在的那张），并与其他面板按日期联动。<br>\n上图=累计涨跌幅（以区间首点为 0）；下图=每日归零（以当日首个有效点为 0），便于逐日比较日内形态。"},"candles":{"title":"上证指数日K","html":"<b>数据源</b>：腾讯 <code>fqkline</code>，500 根前复权日线（2024-08-28 起）。<br>\n<b>底部标记</b>按跌停强度分档：<i class=\"mk\" style=\"background:#ec4899\"></i>警觉（粉）<i class=\"mk\" style=\"background:#a855f7\"></i>强恐慌（紫）<i class=\"mk\" style=\"background:#f59e0b\"></i>极端（橙），综合分 = max(跌停家数/60, 跌停市值占比/1.0, 权重股跌停数/12)。<br>\n<b>悬停</b>显示当日恐慌情绪 / 跌停家数 / 市值占比 / 权重股跌停 / 大中小盘分布。<br>\n<b>粉/紫/橙标记日</b>的悬停卡片里还会多一条<b>「当日跌停家数走势」迷你曲线</b>（每 5 分钟一档），同时底部那条标记会被高亮。曲线由 <b>baostock 5 分钟线还原</b>：对当日每只跌停股，逐根 5 分钟 bar 判定「收盘价是否等于跌停价」，统计该时点封死跌停的家数，并给出累计曾触及家数。<br>\n<b>为什么不用东财跌停池</b>：该接口只保留最近约 7 个交易日，且只有「最后封板时间」而非「首次触及」——例如北方铜业当日 09:40 就触及跌停、14:56 才最终封死，用最后封板时间画曲线会系统性滞后。<br>\n<b>口径与偏差</b>：历史市值为估算（当前流通市值 × 当日收盘比，假设股本不变）；权重股名单为当前沪深300+中证500，存在成分变更的前视偏差。曲线按 5 分钟收盘价判定，与分笔口径可能有微小差异。"},"cyb":{"title":"双创（创业板指 + 科创50）","html":"<b>数据源</b>：腾讯日线，创业板指 <code>sz399006</code>、科创50 <code>sh000688</code>。<br>\n中证科创创业50 指数 <code>931643</code> 在腾讯无数据，故未采用。"},"dtstat":{"title":"跌停家数 × 市值 × 权重股 · 统计关系","html":"<b>样本</b>：300 个交易日（2025-07-01 起）。<br>\n<b>⚠️ 样本一拉长，结论就变了</b>：153 天窗口下「跌停家数 → 未来 1 日收益」相关系数是 <b>+0.216（p=0.007，显著）</b>；扩到 300 天后降到 <b>+0.110（p=0.056，不显著）</b>。此前那个「恐慌极值后短期均值回复」的结论<b>并不稳健</b>，主要来自 2026 年 2–9 月这段特定行情。300 天里唯一仍勉强显著的是「权重股跌停数」（+0.116, p=0.044）。<br>\n<b>紫档最强但样本极小</b>：5 日胜率 100%，但只有 4 天。橙档反转 lift 最低 —— 极端簇围绕拐点分布而非落在拐点上，<b>峰值恐慌滞后于价格拐点</b>。<br>\n<b>口径与偏差</b>：历史市值 = 当前流通市值 × 收盘比（跨越 15 个月误差较大）；权重股名单存在前视偏差；失败个股约 3%，会小幅低估。<b>以上为统计描述，不是预测模型，不足以作为交易依据。</b>"},"state":{"title":"恐慌情绪状态描述器","html":"<b>只做状态刻画，不输出预测概率。</b><br>\n情绪值 <code>sent = 100 × (1 − exp(−score / 2.5))</code>，score = max(跌停家数/60, 跌停市值占比/1.0, 权重股跌停数/12)，即<b>取最严重的那一维</b>。<br>\n恐慌类型按跌停股的市值结构划分，<b>仅在家数 ≥ 10 时判定</b>：微盘踩踏（小盘 ≥ 65%）/ 权重杀跌（大盘 ≥ 50%）/ 全面抛售。<br>\n此前尝试过的「反弹概率预测」与「更强变量搜索」因样本外表现不敌基准、且跨季度规律不稳定，已从面板移除。"},"ztdt":{"title":"涨停 / 跌停家数","html":"<b>数据源</b>：东方财富涨跌停股池（<code>getTopicZTPool</code> / <code>getTopicDTPool</code>），显示最近 7 个交易日。<br>\n该接口<b>必须显式传 <code>date</code> 参数</b>，否则会返回最新一天的数据；返回的 <code>qdate</code> 字段具有误导性，不可用于判断日期。"},"amount":{"title":"两市成交额","html":"<b>数据源</b>：腾讯日线，沪深两市合计成交额，单位亿元，显示最近 7 个交易日。"},"events":{"title":"后续重要事件倒计时","html":"<b>FOMC 议息会议</b>：每次运行都<b>实时解析 federalreserve.gov 官方日历页</b>（当前解析到 6 场），日期取<b>决议日</b>即会议最后一天，而非首日。<br>\n<b>中美互动</b>：分两类 —— ① <b>双边磋商/访问</b>是临时安排的，没有固定日程，只能人工核实后录入（每条都带来源，见卡片下方）；② <b>多边场合</b>（APEC、G20、联合国大会、达沃斯、博鳌）每年固定举办，中美元首与经贸团队通常在此期间接触；有官方公布日期时标「官方」，官方未公布前按惯例月份滚动并标注。<b>本表最后一次核对双边安排信息：2026-09-21</b>。<br>\n<b>国内会议与例行发布为按历年惯例推算</b>（标「惯例推算」）—— 官方不提前公布固定日期，仅供参考。含中央政治局会议、中央经济工作会议、全国两会、进博会、LPR 报价（每月 20 日，遇周末顺延）、官方制造业 PMI。<br>\n所有事件每次都会<b>滚动到下一次</b>并丢弃已结束的；已开始但未结束的显示为<b>「进行中」</b>。"}};</script>
+<script>window.PUSHLOG = [{"date":"2026-09-18","kind":"close","ts":"2026-09-24T11:41:32.286Z","title":"2026-09-18 A股盘后","body":"上证 3911.87 +0.94%\n成交 2.08 万亿 +2540 亿\n涨停 78 / 跌停 0\n恐慌情绪 0/100\n跌停市值占比 0.00% · 权重股 0 只\n—— 临近事件 ——\n9天后 · 官方制造业 PMI（惯例推算）\n29天后 · LPR 报价（惯例推算）\n37天后 · FOMC 议息会议"},{"date":"2026-09-22","kind":"close","ts":"2026-09-24T11:41:32.288Z","title":"2026-09-22 A股盘后","body":"上证 3952.13 +0.06%\n成交 2.14 万亿 +1040 亿\n涨停 63 / 跌停 3\n恐慌情绪 2/100\n跌停市值占比 0.02% · 权重股 0 只\n—— 临近事件 ——\n进行中(剩1天) · 中美经贸磋商（何立峰率团赴美）\n进行中(剩0天) · 联合国大会一般性辩论（惯例）\n8天后 · 官方制造业 PMI（惯例）"},{"date":"2026-09-23","kind":"close","ts":"2026-09-24T11:41:32.289Z","title":"2026-09-23 A股盘后","body":"上证 3936.52 -0.39%\n成交 1.76 万亿 -3706 亿\n涨停 51 / 跌停 13\n恐慌情绪 8.3/100 · 全面抛售\n跌停市值占比 0.08% · 权重股 0 只\n—— 临近事件 ——\n进行中(剩0天) · 中美经贸磋商（何立峰率团赴美）\n7天后 · 官方制造业 PMI（惯例）\n27天后 · LPR 报价（惯例）\n—— 明日开盘应对 ——\nT日(2026-09-23) 上证 -0.39%（中性）· 量能 0.92×（平量）\n若明日高开>1% → 观望\n若明日低开<-1% → 观望"},{"date":"2026-09-24","kind":"premarket","ts":"2026-09-24T11:41:32.291Z","title":"2026-09-24 盘前","body":"预判跳空 -0.26%（仅美股（亚洲未开盘））\n美股 -0.75% · 日开盘 +0.70% · 台开盘 -0.17% · 黄金 +0.01%\n竞价 上证 -0.28% · 深证 -0.45% · 创业板 -0.38%\nT日(2026-09-23) 上证 -0.39% · 量能 0.92×\n—— 今日开盘应对 ——\n上证指数：观望\n跳空未达 ±1% 阈值，历史上无边缘"},{"date":"2026-09-24","kind":"close","ts":"2026-09-24T11:41:32.290Z","title":"2026-09-24 A股盘后","body":"上证 3888.37 -1.22%\n成交 1.65 万亿 -1116 亿\n涨停 52 / 跌停 13\n恐慌情绪 8.3/100 · 全面抛售\n跌停市值占比 0.11% · 权重股 0 只\n⚠️ 失败 1 项: 长历史日线\n—— 临近事件 ——\n6天后 · 官方制造业 PMI（惯例）\n26天后 · LPR 报价（惯例）\n34天后 · FOMC 议息会议\n—— 明日开盘应对 ——\nT日(2026-09-23) 上证 -0.39%（中性）· 量能 0.92×（平量）\n若明日高开>1% → 观望\n若明日低开<-1% → 观望"}];</script>
+<script>// 顶部日期滚轮：回看历史推送（收盘 + 盘前）
+// 数据来自 window.PUSHLOG（build-dashboard 内联的 push-archive.json）
+(function () {
+  const LOG = window.PUSHLOG || [];
+  const bar = document.getElementById('rollerBar');
+  const strip = document.getElementById('rStrip');
+  const panel = document.getElementById('pushPanel');
+  const bodyEl = document.getElementById('pushBody');
+  const headDate = document.getElementById('pushDate');
+  const countEl = document.getElementById('rCount');
+  if (!bar || !strip) return;
+  if (!LOG.length) { bar.hidden = true; return; }
+
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const WD = ['日', '一', '二', '三', '四', '五', '六'];
+
+  // 按日期归并
+  const byDate = new Map();
+  for (const e of LOG) {
+    if (!byDate.has(e.date)) byDate.set(e.date, {});
+    byDate.get(e.date)[e.kind] = e;
+  }
+  const dates = [...byDate.keys()].sort(); // 升序，最新的在右边
+  let cur = dates[dates.length - 1];
+  let shown = true;
+
+  const chipOf = (d) => strip.querySelector(`[data-date="${d}"]`);
+
+  function renderStrip() {
+    strip.innerHTML = '';
+    for (const d of dates) {
+      const rec = byDate.get(d);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rchip' + (d === cur && shown ? ' on' : '');
+      b.dataset.date = d;
+      const wd = WD[new Date(d + 'T00:00:00').getDay()];
+      b.innerHTML = `<b>${d.slice(5)}</b><em>周${wd}</em>` +
+        (rec.premarket && rec.close ? '<i class="both"></i>' : rec.premarket ? '<i class="pm"></i>' : '');
+      b.title = `${d} 周${wd}${rec.premarket ? ' · 盘前' : ''}${rec.close ? ' · 收盘' : ''}`;
+      b.addEventListener('click', () => {
+        if (d === cur && shown) { shown = false; renderStrip(); if (panel) panel.hidden = true; return; }
+        select(d);
+      });
+      strip.appendChild(b);
+    }
+  }
+
+  function select(d) {
+    cur = d;
+    shown = true;
+    renderStrip();
+    const rec = byDate.get(d);
+    const kinds = [];
+    if (rec.premarket) kinds.push('premarket');
+    if (rec.close) kinds.push('close');
+    if (headDate) headDate.textContent = `${d} 周${WD[new Date(d + 'T00:00:00').getDay()]} · ${kinds.map((k) => (k === 'premarket' ? '盘前' : '收盘')).join(' + ')}`;
+    if (bodyEl) {
+      bodyEl.innerHTML = kinds
+        .map((k) => {
+          const e = rec[k];
+          return `<div class="pushcard ${k}"><div class="pc-h">${k === 'premarket' ? '盘前' : '收盘'}推送<span>${e.title}</span></div><pre>${esc(e.body)}</pre></div>`;
+        })
+        .join('');
+    }
+    if (panel) panel.hidden = false;
+    const el = chipOf(d);
+    if (el && el.scrollIntoView) { try { el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch { /* 忽略 */ } }
+  }
+
+  const step = (k) => {
+    const i = dates.indexOf(cur);
+    const j = i + k;
+    if (j >= 0 && j < dates.length) select(dates[j]);
+  };
+  const prev = document.getElementById('rPrev');
+  const next = document.getElementById('rNext');
+  if (prev) prev.addEventListener('click', () => step(-1));
+  if (next) next.addEventListener('click', () => step(1));
+  if (countEl) countEl.textContent = `${dates.length} 天`;
+
+  // 键盘左右键也能翻
+  window.addEventListener('keydown', (e) => {
+    if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+  });
+
+  renderStrip();
+  select(cur); // 默认展示最近一天
+})();
+</script>
 <script>// 盘前信号：开盘后从同源 /signal 拉取实时集合竞价跳空，更新卡片
 // （用 file:// 直接打开时无法获取，会退化为静态条件清单）
 (function () {
