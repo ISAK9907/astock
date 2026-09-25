@@ -266,7 +266,7 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 </button>
 <button class="themebtn pwabtn" id="pwaBtn" type="button" title="安装到桌面" hidden style="top:46px">⤓ 安装</button>
 <div class="pwatip" id="pwaTip" hidden>iPhone/iPad：点「分享」→「添加到主屏幕」，可全屏离线查看</div>
-<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/25 09:45:01</div>
+<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/25 11:05:34</div>
 <div class="kpis"><div class="kpi"><div class="l">涨停家数</div><div class="v"><span class="up">52</span></div><div class="d">较前日 <span class="up">+1</span></div></div><div class="kpi"><div class="l">跌停家数</div><div class="v"><span class="down">13</span></div><div class="d">较前日 <span class="up">+0</span></div></div><div class="kpi"><div class="l">两市成交额</div><div class="v">1.65<span class="u">万亿</span></div><div class="d">较前日 <span class="down">-1116</span> 亿</div></div><div class="kpi"><div class="l">上证指数</div><div class="v">3888.37</div><div class="d">较前日 <span class="down">-48.15</span></div></div></div>
 
 <div class="panel" data-panel="signal"><div class="phead"><h2>明日开盘应对<span class="hint">T 日状态 × T+1 集合竞价跳空 · 开盘后自动更新</span></h2>
@@ -1544,6 +1544,9 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
         <tr><td>主导维度</td><td>家数</td></tr>
         <tr><td>综合严重度分</td><td>0.22</td></tr>
       </table>
+      <div class="sect" style="margin-top:14px">恐慌情绪 · 每日散点</div>
+      <div id="sentChart"></div>
+      <div class="tiny" style="margin-top:4px">纵轴 = 情绪分（0~100，与上方刻度同一量纲），横轴 = 交易日。滚轮缩放 · 拖拽平移 · 双击复位；悬停看该日跌停家数。彩点 = 标记日（粉/紫/橙按严重度分档）。</div>
     </div>
     <div>
       <div class="sect">恐慌类型（按跌停股市值结构，仅家数≥10 时判定）</div>
@@ -2252,6 +2255,286 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 
   for (const p of panels) if (hidden.includes(p.dataset.panel)) p.style.display = 'none';
   renderBar();
+})();
+</script>
+<script>// 恐慌情绪散点图：纵轴 = 情绪分（0~100，与上方刻度同一量纲），横轴 = 交易日。
+// 交互与 K 线图保持一致：滚轮缩放（以光标为锚点）、拖拽平移、双击复位；触屏用 dzTouch。
+// 悬停显示该日的跌停家数（用户明确要求的），另附情绪分与严重度分。
+(function () {
+  const host = document.getElementById('sentChart');
+  if (!host) return;
+
+  const DT = window.DTDATA || {};
+  // 只取有情绪分的交易日；DTDATA 的插入顺序就是日期序，但仍显式排序一遍稳妥
+  const B = Object.entries(DT)
+    .filter(([, v]) => v && v.sent != null)
+    .map(([d, v]) => ({ d, sent: v.sent, dt: v.dt ?? 0, score: v.score ?? 0 }))
+    .sort((a, b) => (a.d < b.d ? -1 : 1));
+  const N = B.length;
+  if (!N) {
+    host.innerHTML = '<div class="tiny">暂无情绪数据</div>';
+    return;
+  }
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const mk = (t, a) => {
+    const e = document.createElementNS(NS, t);
+    for (const k in a) e.setAttribute(k, a[k]);
+    return e;
+  };
+
+  const svg = mk('svg', { viewBox: '0 0 500 150' });
+  host.appendChild(svg);
+  host.style.position = 'relative';
+  const tip = document.createElement('div');
+  tip.className = 'chtip';
+  tip.style.display = 'none';
+  host.appendChild(tip);
+
+  const H = 150;
+  const P = { t: 10, r: 10, b: 20, l: 30 };
+  let W = 500;
+  let iw = W - P.l - P.r;
+  const ih = H - P.t - P.b;
+  // 宽度随容器自适应（折叠屏展开/转屏后要重算）
+  const clampW = (v) => Math.max(240, Math.min(760, Math.round(v) || 500));
+  const MIN_SPAN = 5;
+
+  // 标记日用档位色，和蜡烛图上的标记一致；其余用中性蓝。
+  // 注意 window.DTTIERS 的字段是 { min, color, name }（已按 min 降序），不是 dt-stats.json 里的 lo/hi，
+  // 沿用蜡烛图同样的取色方式，避免两处判档口径不一致。
+  const TIERS = window.DTTIERS || [];
+  const tierColor = (score) => {
+    for (const t of TIERS) if (score >= t.min) return t.color;
+    return null;
+  };
+
+  let i0 = 0;
+  let i1 = N;
+  let hover = -1;
+  let mouse = null;
+  let dragging = false;
+  let lastPx = 0;
+
+  const gGrid = mk('g', {});
+  const gDots = mk('g', {});
+  const gHover = mk('g', {});
+  const gX = mk('g', {});
+  svg.appendChild(gGrid);
+  svg.appendChild(gDots);
+  svg.appendChild(gHover);
+  svg.appendChild(gX);
+
+  const yOf = (v) => P.t + ih - (v / 100) * ih;
+  const xOf = (i, span) => P.l + ((i - i0) / span) * iw;
+
+  function clampRange() {
+    if (i0 < 0) { i1 -= i0; i0 = 0; }
+    if (i1 > N) { i0 -= i1 - N; i1 = N; }
+    if (i0 < 0) i0 = 0;
+    if (i1 - i0 < MIN_SPAN) {
+      const mid = (i0 + i1) / 2;
+      i0 = mid - MIN_SPAN / 2;
+      i1 = mid + MIN_SPAN / 2;
+      if (i0 < 0) { i1 -= i0; i0 = 0; }
+      if (i1 > N) { i0 -= i1 - N; i1 = N; }
+    }
+  }
+
+  function render() {
+    const nw = clampW(svg.clientWidth);
+    if (nw !== W) { W = nw; iw = W - P.l - P.r; }
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    clampRange();
+    const span = i1 - i0;
+    const a = Math.max(0, Math.floor(i0));
+    const b = Math.min(N - 1, Math.ceil(i1));
+
+    // ---- 网格与纵轴刻度（0~100 固定，与刻度条同一量纲）----
+    gGrid.textContent = '';
+    for (const v of [0, 25, 50, 75, 100]) {
+      const y = yOf(v);
+      gGrid.appendChild(mk('line', {
+        x1: P.l, x2: W - P.r, y1: y, y2: y,
+        stroke: v === 50 ? '#39414f' : '#2a3140', 'stroke-width': v === 50 ? 0.8 : 0.5,
+        'stroke-dasharray': v === 50 ? 'none' : '2 3',
+      }));
+      const tx = mk('text', { x: P.l - 4, y: y + 3, fill: '#7b8698', 'font-size': '8.5', 'text-anchor': 'end' });
+      tx.textContent = v;
+      gGrid.appendChild(tx);
+    }
+
+    // ---- 散点 ----
+    gDots.textContent = '';
+    for (let i = a; i <= b; i++) {
+      const r = B[i];
+      const c = tierColor(r.score);
+      gDots.appendChild(mk('circle', {
+        cx: +xOf(i, span).toFixed(2), cy: +yOf(r.sent).toFixed(2),
+        r: c ? 2.8 : 1.7, fill: c || '#5b8def', opacity: c ? 1 : 0.7,
+      }));
+    }
+
+    // ---- 横轴日期 ----
+    gX.textContent = '';
+    const ticks = W < 380 ? 3 : 5;
+    for (let k = 0; k <= ticks; k++) {
+      const i = Math.round(i0 + (span * k) / ticks);
+      if (i < 0 || i >= N) continue;
+      const tx = mk('text', {
+        x: +xOf(i, span).toFixed(1), y: H - 6, fill: '#7b8698', 'font-size': '8.5',
+        'text-anchor': k === 0 ? 'start' : k === ticks ? 'end' : 'middle',
+      });
+      tx.textContent = B[i].d.slice(5);
+      gX.appendChild(tx);
+    }
+    drawHover();
+  }
+
+  function drawHover() {
+    gHover.textContent = '';
+    if (hover < 0 || hover >= N) { tip.style.display = 'none'; return; }
+    const r = B[hover];
+    const span = i1 - i0;
+    const x = xOf(hover, span);
+    const y = yOf(r.sent);
+    const c = tierColor(r.score) || '#5b8def';
+    gHover.appendChild(mk('line', { x1: x, x2: x, y1: P.t, y2: P.t + ih, stroke: c, 'stroke-width': 0.8, 'stroke-dasharray': '2 3', opacity: 0.85 }));
+    gHover.appendChild(mk('circle', { cx: x, cy: y, r: 4.2, fill: 'none', stroke: '#fff', 'stroke-width': 1.3 }));
+
+    tip.innerHTML =
+      `<div class="h">${r.d}</div>` +
+      `<div><i style="background:${c}"></i><span class="n">情绪分</span><b>${r.sent.toFixed(1)}</b></div>` +
+      `<div><i style="background:#ef4d5a"></i><span class="n">跌停家数</span><b>${r.dt}</b></div>` +
+      `<div><i style="background:#39414f"></i><span class="n">严重度分</span><b>${r.score}</b></div>`;
+    tip.style.display = '';
+    tip.style.left = '0px';
+    tip.style.top = '0px';
+
+    // 跟随鼠标：优先放在光标右上方，越界就翻到另一侧，始终不压住点
+    if (mouse) {
+      const hr = host.getBoundingClientRect();
+      const mx = mouse.ex - hr.left;
+      const my = mouse.ey - hr.top;
+      const tw = tip.offsetWidth;
+      const th = tip.offsetHeight;
+      let left = mx + 14;
+      if (left + tw > hr.width - 2) left = mx - tw - 14;
+      if (left < 2) left = 2;
+      let top = my - th - 12;
+      if (top < 2) top = my + 16;
+      if (top + th > hr.height - 2) top = Math.max(2, hr.height - th - 2);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+    }
+  }
+
+  // ---------------- 鼠标 ----------------
+  const coords = (e) => {
+    const r = svg.getBoundingClientRect();
+    return { px: ((e.clientX - r.left) / r.width) * W, py: ((e.clientY - r.top) / r.height) * H };
+  };
+  const idxAt = (px) => {
+    const span = i1 - i0;
+    return Math.min(Math.max(Math.round(i0 + ((px - P.l) / iw) * span), 0), N - 1);
+  };
+
+  svg.addEventListener('mousemove', (e) => {
+    if (dragging) return;
+    const { px, py } = coords(e);
+    const inside = px >= P.l - 6 && px <= W - P.r + 6 && py >= P.t - 6 && py <= P.t + ih + 6;
+    if (inside) {
+      // 同一 x 上取纵向最近的点，避免点多时选错
+      const guess = idxAt(px);
+      let best = guess;
+      let bestD = Math.abs(yOf(B[guess].sent) - py);
+      for (const j of [guess - 1, guess + 1]) {
+        if (j < 0 || j >= N) continue;
+        const d = Math.abs(yOf(B[j].sent) - py);
+        if (d < bestD) { bestD = d; best = j; }
+      }
+      hover = best;
+      mouse = { ex: e.clientX, ey: e.clientY };
+    } else {
+      hover = -1;
+    }
+    drawHover();
+  });
+  svg.addEventListener('mouseleave', () => { hover = -1; mouse = null; drawHover(); });
+
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const { px } = coords(e);
+    const cx = Math.min(Math.max(px, P.l), W - P.r);
+    const span = i1 - i0;
+    const anchor = i0 + ((cx - P.l) / iw) * span;
+    const f = Math.exp(e.deltaY * 0.0015);
+    const a2 = anchor - (anchor - i0) * f;
+    const b2 = anchor + (i1 - anchor) * f;
+    if (b2 - a2 < MIN_SPAN) return;
+    i0 = a2; i1 = b2;
+    render();
+  }, { passive: false });
+
+  svg.addEventListener('mousedown', (e) => {
+    dragging = true;
+    lastPx = e.clientX;
+    svg.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  window.addEventListener('mouseup', () => { if (dragging) { dragging = false; svg.style.cursor = ''; } });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const r = svg.getBoundingClientRect();
+    const dx = ((e.clientX - lastPx) / r.width) * W;
+    lastPx = e.clientX;
+    const span = i1 - i0;
+    const dIdx = (-dx / iw) * span;
+    i0 += dIdx; i1 += dIdx;
+    render();
+  });
+  svg.addEventListener('dblclick', () => { i0 = 0; i1 = N; render(); });
+
+  // ---------------- 触屏 ----------------
+  if (window.dzTouch) {
+    window.dzTouch(svg, {
+      onPan(dx) {
+        const r = svg.getBoundingClientRect();
+        const span = i1 - i0;
+        const dIdx = (-((dx / r.width) * W) / iw) * span;
+        i0 += dIdx; i1 += dIdx;
+        render();
+      },
+      onPinch(ratio, cx) {
+        const r = svg.getBoundingClientRect();
+        const px = ((cx - r.left) / r.width) * W;
+        const span = i1 - i0;
+        const anchor = i0 + ((Math.min(Math.max(px, P.l), W - P.r) - P.l) / iw) * span;
+        const f = 1 / ratio;
+        let a = anchor - (anchor - i0) * f;
+        let b = anchor + (i1 - anchor) * f;
+        if (b - a < MIN_SPAN) return;
+        i0 = a; i1 = b;
+        clampRange();
+        render();
+      },
+      onDoubleTap() { i0 = 0; i1 = N; render(); },
+    });
+  }
+
+  let rz = null;
+  const later = () => { clearTimeout(rz); rz = setTimeout(render, 180); };
+  window.addEventListener('resize', later);
+  window.addEventListener('orientationchange', later);
+  // 面板可被隐藏/显示（panels.js），隐藏期间 clientWidth 为 0，显示后要重算宽度
+  if (window.ResizeObserver) {
+    let lastW = 0;
+    new ResizeObserver(() => {
+      if (host.clientWidth !== lastW) { lastW = host.clientWidth; later(); }
+    }).observe(host);
+  }
+
+  render();
 })();
 </script>
 </body></html>
