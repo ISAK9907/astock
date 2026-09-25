@@ -79,6 +79,9 @@ h1{font-size:17px;margin:0 0 2px}
 .tblscroll .stbl tr:last-child td{border-bottom:1px solid #232b3a}
 .tblscroll::-webkit-scrollbar{width:7px}
 .tblscroll::-webkit-scrollbar-thumb{background:#39414f;border-radius:4px}
+/* 散点图横轴的年份标签（1 月）：标红加粗，便于扫读年份分界 */
+#sentChart .xyear{fill:#ef4d5a;font-weight:700}
+html[data-theme="light"] #sentChart .xyear{fill:#d92b3a}
 svg{width:100%;height:auto;display:block}
 .ev{display:flex;gap:11px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
 .ev:last-of-type{border-bottom:0}
@@ -275,7 +278,7 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 </button>
 <button class="themebtn pwabtn" id="pwaBtn" type="button" title="安装到桌面" hidden style="top:46px">⤓ 安装</button>
 <div class="pwatip" id="pwaTip" hidden>iPhone/iPad：点「分享」→「添加到主屏幕」，可全屏离线查看</div>
-<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/25 12:11:51</div>
+<div class="sub">数据截至 2026-09-24 收盘 · 生成于 2026/9/25 12:16:06</div>
 <div class="kpis"><div class="kpi"><div class="l">涨停家数</div><div class="v"><span class="up">52</span></div><div class="d">较前日 <span class="up">+1</span></div></div><div class="kpi"><div class="l">跌停家数</div><div class="v"><span class="down">13</span></div><div class="d">较前日 <span class="up">+0</span></div></div><div class="kpi"><div class="l">两市成交额</div><div class="v">1.65<span class="u">万亿</span></div><div class="d">较前日 <span class="down">-1116</span> 亿</div></div><div class="kpi"><div class="l">上证指数</div><div class="v">3888.37</div><div class="d">较前日 <span class="down">-48.15</span></div></div></div>
 
 <div class="panel" data-panel="signal"><div class="phead"><h2>明日开盘应对<span class="hint">T 日状态 × T+1 集合竞价跳空 · 开盘后自动更新</span></h2>
@@ -2688,13 +2691,15 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
       const d = B[i].d;
       const x = xOf(i, span);
       const isJan = d.slice(5, 7) === '01';
-      const tx = mk('text', {
-        x: +x.toFixed(1), y: H - 6,
-        fill: isJan ? '#aab6c8' : '#7b8698',
-        'font-size': '8.5',
-        'font-weight': isJan ? '600' : '400',
+      const attrs = {
+        x: +x.toFixed(1), y: H - 6, 'font-size': '8.5',
         'text-anchor': k === 0 ? 'start' : k === chosen.length - 1 ? 'end' : 'middle',
-      });
+      };
+      // 年份标签走 CSS 类（标红加粗），这样亮色主题能另配一套颜色；
+      // SVG 的表现属性优先级低于 CSS 规则，所以主题覆盖放在 CSS 里。
+      if (isJan) attrs.class = 'xyear';
+      else { attrs.fill = '#7b8698'; attrs['font-weight'] = '400'; }
+      const tx = mk('text', attrs);
       tx.textContent = labelOf(d);
       gX.appendChild(tx);
     });
