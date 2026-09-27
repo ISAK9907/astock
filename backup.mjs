@@ -65,6 +65,33 @@ if (gitCode(['diff', '--cached', '--quiet']) === 0) {
 const files = git(['diff', '--cached', '--name-only']).split('\n').filter(Boolean);
 const stat = git(['diff', '--cached', '--shortstat']);
 
+// ---- 中文损坏防线 ----
+// 为什么需要：这个项目已经两次把源文件的中文写坏（都是 PowerShell 的 Get-Content|Set-Content
+// 按系统 GBK 读、再按 UTF-8 写）。坏出来的**不是 U+FFFD**，而是合法 UTF-8 的乱码，
+// 所以 node --check 和常见的编码检查都发现不了，往往等下次打开文件才看出来 ——
+// 那时可能已经提交了好几轮。
+// 判定用「乱码特征字」计数：这些字在正常中文里几乎不会出现。
+// ⚠️ 特征字表必须写成 \u 转义，不能写字面量 —— 否则这个文件自己就会被判为乱码（真踩过）。
+const MOJI = '\u9225\u951b\u9428\u6d93\u93c4\u935c\u6d63\u9366\u93c3\u93c2\u9359\u6769\u7ee0\u941e\u9286\u922b\u9472\u93b4\u9429\u93cd\u935d\u942b\u95ab\u93c7\u7487\u93cb\u74d2\u9351\u59f9\u9410\u95b2\u7f01\u941c\u934f'.split('');
+const TEXT_EXT = ['.mjs', '.js', '.json', '.md', '.html', '.yml', '.yaml', '.cmd', '.txt', '.css'];
+const suspects = [];
+for (const f of files) {
+  if (!TEXT_EXT.some((e) => f.endsWith(e))) continue;
+  let raw;
+  try { raw = readFileSync(f, 'utf8'); } catch { continue; }
+  const hits = MOJI.reduce((n, ch) => n + (raw.split(ch).length - 1), 0);
+  const fffd = raw.split('\uFFFD').length - 1;
+  if (hits >= 5 || fffd > 0) suspects.push({ f, hits, fffd });
+}
+if (suspects.length && !process.argv.includes('--allow-mojibake')) {
+  console.error('\n✗ 检测到中文损坏的文件，拒绝提交：');
+  for (const s of suspects) console.error(`    ${s.f}  （乱码特征字 ${s.hits} 个，替换字符 ${s.fffd} 个）`);
+  console.error('\n  这通常是把 UTF-8 文件用 PowerShell 的 Get-Content|Set-Content 改过（按 GBK 读、按 UTF-8 写）。');
+  console.error('  修法：git checkout <上一个好提交> -- <文件>，再用 edit 类工具重做改动。');
+  console.error('  确认是误判就加 --allow-mojibake 重来一次。');
+  process.exit(4);
+}
+
 const now = new Date();
 const pad = (n) => String(n).padStart(2, '0');
 const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;

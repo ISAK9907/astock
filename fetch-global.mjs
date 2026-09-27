@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fetchJson, sleep, tencent, emKline } from './sources.mjs';
 
 const H = { Referer: 'https://quote.eastmoney.com/' };
-// tx=null 表示腾讯没有经核对可用的对应代码；yf=Yahoo Finance 代码（第三条降级链）
+// tx=null 表示腾讯没有经核对可用的对应代码；yf=Yahoo Finance 代码；sf=新浪全球期货代码
 const LIST = [
   { key: 'spx', em: '100.SPX', tx: 'us.INX', yf: '^GSPC', name: '标普500', txVerified: true },
   { key: 'ndx', em: '100.NDX', tx: 'us.IXIC', yf: '^IXIC', name: '纳斯达克', txVerified: true },
@@ -30,7 +30,11 @@ const LIST = [
   { key: 'gold', em: '101.GC00Y', tx: null, yf: 'GC=F', name: 'COMEX黄金' },
   { key: 'xau', em: '122.XAU', tx: null, yf: 'XAUUSD=X', name: '伦敦金现货' },
   { key: 'dxy', em: '100.UDI', tx: null, yf: 'DX-Y.NYB', name: '美元指数' },
-  { key: 'a50', em: '104.CN00Y', tx: null, yf: 'XIN9.FGI', name: '富时中国A50期指连续' },
+  // ⚠️ a50 是「期指连续」，xin9 是「A50 指数」—— 两个不同标的。
+  //    一开始两条都给了 Yahoo XIN9.FGI，结果近期区间变成同一条序列
+  //    （实测云端 2026-09-24 两者都是 14310.03，而本机东财期指是 14271）。
+  //    Yahoo 没有 A50 期指连续，改用新浪 GlobalFuturesService 的 CHA50CFD —— 本机与 runner 实测都通。
+  { key: 'a50', em: '104.CN00Y', tx: null, yf: null, sf: 'CHA50CFD', name: '富时中国A50期指连续' },
   { key: 'xin9', em: '100.XIN9', tx: null, yf: 'XIN9.FGI', name: '富时中国A50指数' },
   { key: 'dax', em: '100.GDAXI', tx: null, yf: '^GDAXI', name: '德国DAX' },
 ];
@@ -67,6 +71,27 @@ async function yahooDaily(sym) {
   }
   if (!rows.length) throw new Error('无有效日线');
   return rows;
+}
+
+/**
+ * 新浪全球期货日线（JSONP）。用于 a50 期指连续 —— Yahoo 只有 A50 指数，没有期指连续。
+ * 返回体形如：   var _=([{"date":"2016-09-27","open":"1342.000",...}])
+ */
+async function sinaGlobalFutures(sym) {
+  const url =
+    `https://stock.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/` +
+    `GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=${encodeURIComponent(sym)}`;
+  const r = await fetch(url, { headers: { ...YF_H, Referer: 'https://finance.sina.com.cn/' }, signal: AbortSignal.timeout(25000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const txt = await r.text();
+  const m = /var _=\((\[.*\]|null)\)/s.exec(txt);
+  if (!m || m[1] === 'null') throw new Error('无数据');
+  const arr = JSON.parse(m[1]);
+  const rows = arr
+    .map((x) => ({ d: x.date, o: +x.open, c: +x.close, h: +x.high, l: +x.low, v: +x.volume || 0 }))
+    .filter((b) => b.d && isFinite(b.c) && b.c > 0);
+  if (!rows.length) throw new Error('无有效日线');
+  return rows.sort((a, b) => (a.d < b.d ? -1 : 1));
 }
 
 /**
@@ -123,10 +148,10 @@ const dropPartial = (bars) => {
 
 const out = { generatedAt: new Date().toISOString(), series: {} };
 const missing = [];
-let fromEm = 0, fromTx = 0, fromYf = 0, fromPrev = 0;
+let fromEm = 0, fromTx = 0, fromSf = 0, fromYf = 0, fromPrev = 0;
 
 for (const it of LIST) {
-  const { key, em, tx, yf, name } = it;
+  const { key, em, tx, yf, sf, name } = it;
   const old = prevSeries[key]?.bars ?? [];
   let bars = null, src = '';
 
@@ -159,7 +184,20 @@ for (const it of LIST) {
         console.warn(`  ! ${name} 腾讯也失败：${String(e2.message).slice(0, 40)}`);
       }
     }
-    // ---- 3. Yahoo（云端可达；本机 403，所以只在东财+腾讯都失败时才会走到）----
+    // ---- 3. 新浪全球期货（用于 a50 期指连续；两端实测都通）----
+    if (!bars && sf) {
+      try {
+        const rows = await sinaGlobalFutures(sf);
+        if (saneAgainstOld(old, rows, name)) {
+          bars = mergeBars(old, dropPartial(rows));
+          src = `新浪(${sf})`;
+          fromSf++;
+        }
+      } catch (e3) {
+        console.warn(`  ! ${name} 新浪期货也失败：${String(e3.message).slice(0, 40)}`);
+      }
+    }
+    // ---- 4. Yahoo（云端可达；本机 403，所以只在上面几级都失败时才会走到）----
     if (!bars && yf) {
       try {
         const rows = await yahooDaily(yf);
@@ -168,18 +206,18 @@ for (const it of LIST) {
           src = `Yahoo(${yf})`;
           fromYf++;
         }
-      } catch (e3) {
-        console.warn(`  ! ${name} Yahoo 也失败：${String(e3.message).slice(0, 40)}`);
+      } catch (e4) {
+        console.warn(`  ! ${name} Yahoo 也失败：${String(e4.message).slice(0, 40)}`);
       }
     }
-    // ---- 4. 旧文件 ----
+    // ---- 5. 旧文件 ----
     if (!bars && old.length) { bars = old.map((b) => ({ ...b })); src = '旧数据'; fromPrev++; }
     if (!bars) missing.push(name);
   }
 
   if (!bars?.length) { console.warn(`  ✗ ${name} 无任何数据`); continue; }
-  out.series[key] = { name, em, tx, yf, bars, src };
-  const tag = src.startsWith('东财') ? '✓' : src.startsWith('腾讯') ? '◐' : src.startsWith('Yahoo') ? '◑' : '↺';
+  out.series[key] = { name, em, tx, yf, sf, bars, src };
+  const tag = src.startsWith('东财') ? '✓' : src.startsWith('腾讯') ? '◐' : src.startsWith('新浪') ? '◆' : src.startsWith('Yahoo') ? '◑' : '↺';
   console.log(`  ${tag} ${name.padEnd(18)} ${src.padEnd(16)} ${String(bars.length).padStart(4)} 根  ${bars[0].d} → ${bars.at(-1).d}`);
   await sleep(700);
 }
@@ -194,7 +232,7 @@ out.coverage = {
   got: Object.keys(out.series).length,
   total: LIST.length,
   missing: missing.map((n) => LIST.find((x) => x.name === n)?.key).filter(Boolean),
-  bySource: { eastmoney: fromEm, tencent: fromTx, yahoo: fromYf, previous: fromPrev },
+  bySource: { eastmoney: fromEm, tencent: fromTx, sina: fromSf, yahoo: fromYf, previous: fromPrev },
   // 静默冻结是这套降级链最危险的失败模式（作业报绿、数据却停更），
   // 所以把「哪些品种在沿用旧数据、旧到哪天」直接写进文件，让看板能显式提示。
   stale: Object.entries(out.series)
@@ -205,7 +243,7 @@ writeFileSync('global-daily.json', JSON.stringify(out), 'utf8');
 
 const total = LIST.length;
 const got = Object.keys(out.series).length;
-console.log(`\nwrote global-daily.json：覆盖 ${got}/${total} 个品种（东财 ${fromEm} · 腾讯 ${fromTx} · Yahoo ${fromYf} · 沿用旧数据 ${fromPrev}）`);
+console.log(`\nwrote global-daily.json：覆盖 ${got}/${total} 个品种（东财 ${fromEm} · 腾讯 ${fromTx} · 新浪 ${fromSf} · Yahoo ${fromYf} · 沿用旧数据 ${fromPrev}）`);
 if (out.coverage.stale.length) {
   console.warn(`  ⚠️ 沿用旧数据的 ${out.coverage.stale.length} 个：${out.coverage.stale.map((s) => `${s.name}(至${s.last})`).join('、')}`);
   console.warn('     它们只有东财 kline 有完整历史；东财恢复后会自动补上（无需改代码）。');
