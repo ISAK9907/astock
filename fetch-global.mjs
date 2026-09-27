@@ -27,8 +27,12 @@ const LIST = [
   { key: 'nikkei', em: '100.N225', tx: null, yf: '^N225', name: '日经225' },
   { key: 'twii', em: '100.TWII', tx: null, yf: '^TWII', name: '台湾加权' },
   { key: 'hsi', em: '100.HSI', tx: 'hkHSI', yf: '^HSI', name: '恒生指数', txVerified: true },
-  { key: 'gold', em: '101.GC00Y', tx: null, yf: 'GC=F', name: 'COMEX黄金' },
-  { key: 'xau', em: '122.XAU', tx: null, yf: 'XAUUSD=X', name: '伦敦金现货' },
+  // 黄金两条都走新浪 GlobalFuturesService（GC=COMEX黄金、XAU=伦敦金现货）：
+  //   · Yahoo 的 XAUUSD=X 实测 404（云端实跑时伦敦金因此掉回旧数据）；
+  //   · 与东财更贴近：新浪 GC 2026-09-25 收 4320.30，东财 GC00Y 4310.1（差 0.2%），
+  //     而 Yahoo GC=F 是另一套换月规则的连续合约，历史上与东财差到 3.3%。
+  { key: 'gold', em: '101.GC00Y', tx: null, yf: null, sf: 'GC', name: 'COMEX黄金' },
+  { key: 'xau', em: '122.XAU', tx: null, yf: null, sf: 'XAU', name: '伦敦金现货' },
   { key: 'dxy', em: '100.UDI', tx: null, yf: 'DX-Y.NYB', name: '美元指数' },
   // ⚠️ a50 是「期指连续」，xin9 是「A50 指数」—— 两个不同标的。
   //    一开始两条都给了 Yahoo XIN9.FGI，结果近期区间变成同一条序列
