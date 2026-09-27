@@ -1,0 +1,75 @@
+name: 数据源探测（手动）
+
+# 2026-09-27 排查「云端日更」时发现：GitHub runner（Azure）连不上东财 kline，
+# push2his / push2 都是 ETIMEDOUT/UND_ERR_SOCKET，但同厂商的 push2ex（跌停池）正常，
+# 腾讯/同花顺/新浪/federalreserve/baostock 全部正常。
+# 结果就是 global-daily.json 只有腾讯那 3 条能更新，另外 9 条静默沿用旧数据。
+#
+# 这个 workflow 只做一件事：从 runner 上把候选数据源逐个探一遍，找出哪些能通。
+# 它不改任何数据，手动触发，用于决定 fetch-global.mjs 的降级链怎么排。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TZ: Asia/Shanghai
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 探测候选数据源
+        run: |
+          set +e
+          probe() {
+            local name="$1" url="$2" ref="${3:-}"
+            if [ -n "$ref" ]; then
+              out=$(curl -s -m 15 -w '\n%{http_code}' -H "User-Agent: Mozilla/5.0" -H "Referer: $ref" "$url")
+            else
+              out=$(curl -s -m 15 -w '\n%{http_code}' -H "User-Agent: Mozilla/5.0" "$url")
+            fi
+            code=$(echo "$out" | tail -1)
+            body=$(echo "$out" | head -c 150 | tr -d '\n')
+            printf '%-34s HTTP %-6s %s\n' "$name" "$code" "$body"
+          }
+
+          EM_K='secid=1.000001&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53&klt=101&fqt=1&end=20500101&lmt=1'
+          EM_G='secid=100.KS11&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53&klt=101&fqt=1&end=20500101&lmt=1'
+
+          echo '===== 东财：镜像主机 ====='
+          for h in push2his 1.push2his 7.push2his 21.push2his 44.push2his 99.push2his; do
+            probe "$h（上证）" "https://$h.eastmoney.com/api/qt/stock/kline/get?$EM_K" 'https://quote.eastmoney.com/'
+          done
+          probe 'push2（上证）'      "https://push2.eastmoney.com/api/qt/stock/kline/get?$EM_K" 'https://quote.eastmoney.com/'
+          probe 'push2delay（上证）' "https://push2delay.eastmoney.com/api/qt/stock/kline/get?$EM_K" 'https://quote.eastmoney.com/'
+          echo
+          echo '===== 东财：全球指数（KOSPI）走镜像 ====='
+          for h in 1.push2his 7.push2his 21.push2his; do
+            probe "$h（KOSPI）" "https://$h.eastmoney.com/api/qt/stock/kline/get?$EM_G" 'https://quote.eastmoney.com/'
+          done
+          echo
+          echo '===== 东财：已知可用的 push2ex ====='
+          probe 'push2ex 跌停池' 'https://push2ex.eastmoney.com/getTopicDTPool?ut=7eea3edcaed734bea9cbfc24409ed989&dpt=wz.ztzt&Pageindex=0&pagesize=1&sort=fund%3Aasc&date=20260924'
+          echo
+          echo '===== 腾讯 / 同花顺 / 新浪 ====='
+          probe '腾讯 us.INX' 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=us.INX,day,,,3,qfq'
+          probe '腾讯 us.DJI' 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=us.DJI,day,,,3,qfq'
+          probe '同花顺 深证成指' 'https://d.10jqka.com.cn/v6/line/sz_399001/01/last.js'
+          probe '新浪 日线' 'https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh000001&scale=240&datalen=2'
+          probe '新浪 黄金 GC' 'https://stock.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=GC' 'https://finance.sina.com.cn/'
+          probe '新浪 A50 CHA50CFD' 'https://stock.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=CHA50CFD' 'https://finance.sina.com.cn/'
+          echo
+          echo '===== 其他公开源 ====='
+          probe 'stooq ^spx' 'https://stooq.com/q/d/l/?s=%5Espx&i=d'
+          probe 'yahoo ^GSPC' 'https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d'
+          probe '东财 全球报价 ulist' 'https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=100.KS11,100.N225,100.TWII,100.GDAXI,100.UDI,100.XIN9&fields=f1,f2,f3,f12,f14'
+          probe '新浪 全球实时 hq' 'https://hq.sinajs.cn/list=int_dji,int_nasdaq,int_hangseng,int_nikkei,gb_$dji' 'https://finance.sina.com.cn/'
+
+      - name: 小结
+        if: always()
+        run: echo "把上面每次探测的 HTTP 码对照起来看：东财镜像主机若为 200 就是可用的修复路径。" >> "$GITHUB_STEP_SUMMARY"
