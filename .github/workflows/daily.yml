@@ -1,0 +1,130 @@
+name: 盘后日更
+
+# 云端日更：把原本跑在本地 Windows 上的整条流水线搬到 GitHub runner。
+# 之所以可行：runner 是一台完整的 Linux，能原样跑现在的 Node + Python，
+# 包括 baostock（分时跌停曲线）—— 那一项是手机端唯一接不了的（私有 socket 协议）。
+#
+# ⚠️ TZ 必须设成 Asia/Shanghai：daily-update.mjs / build-dashboard.mjs 里用
+#    new Date() 取「今天是哪天」来定 T_DATE、判断盘中/盘后。runner 默认 UTC，
+#    不设的话北京时间上午跑的这一次会把日期算成前一天。
+on:
+  schedule:
+    # 北京时间 15:50（周一至周五）= 07:50 UTC。cron 只认 UTC。
+    # 排在 15:40 之后是给「跌停池已定稿」留余量；GitHub 的定时任务高峰期可能延迟数十分钟，无妨。
+    - cron: '50 7 * * 1-5'
+  workflow_dispatch:
+
+# 盘前/盘后两次运行不会重叠，但手动触发可能撞上定时触发
+concurrency:
+  group: astock-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write # 提交数据与生成物回仓库（Pages 直接从这里发布）
+
+env:
+  TZ: Asia/Shanghai
+  PYTHONIOENCODING: utf-8
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装 baostock
+        run: pip install --quiet baostock
+
+      # 唯一未验证的风险点：东财/同花顺可能封机房 IP（runner 在 Azure）。
+      # 放在长跑之前探一下，失败也能一眼看出是「被墙」还是「脚本 bug」。
+      - name: 环境自检
+        run: |
+          echo "日期：$(date +'%Y-%m-%d %H:%M:%S %Z')  |  Node $(node -v)  |  $(python --version 2>&1)"
+          python -c "import baostock; print('baostock OK', baostock.__version__ if hasattr(baostock,'__version__') else '')"
+          probe() {
+            local name="$1" url="$2"
+            code=$(curl -s -o /tmp/probe.out -w '%{http_code}' -m 20 "$url" || echo 000)
+            echo "  $name  HTTP $code  $(head -c 120 /tmp/probe.out)"
+          }
+          echo '--- 数据源连通性 ---'
+          probe '东财 kline' 'https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.000001&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53&klt=101&fqt=1&end=20500101&lmt=1'
+          probe '东财 跌停池' 'https://push2ex.eastmoney.com/getTopicDTPool?ut=7eea3edcaed734bea9cbfc24409ed989&dpt=wz.ztzt&Pageindex=0&pagesize=1&sort=fund%3Aasc'
+          probe '腾讯 日线' 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,,,2,qfq'
+          probe '同花顺 日线' 'https://d.10jqka.com.cn/v6/line/sz_399001/01/last.js'
+          probe '新浪 日线' 'https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=sh000001&scale=240&datalen=2'
+
+      - name: 抓数据 → 重算 → 生成看板
+        id: gen
+        continue-on-error: true # 失败也要往下走，把已完成的部分提交掉
+        env:
+          # 没配这个 secret 也不影响：push-bark 会打印「未配置」然后继续
+          BARK_URL: ${{ secrets.BARK_URL }}
+        run: |
+          set -o pipefail
+          node daily-update.mjs --no-deploy --no-worker --no-backup 2>&1 | tee daily-run.log
+
+      - name: 生成 Pages 入口 index.html
+        if: always()
+        run: |
+          if [ ! -f astock-dashboard.html ]; then
+            echo "::error::astock-dashboard.html 未生成（build-dashboard.mjs 失败？）"
+            exit 1
+          fi
+          cp astock-dashboard.html index.html
+          ls -l index.html
+
+      - name: 提交并推送
+        if: always()
+        run: |
+          git config user.name  'astock-bot'
+          git config user.email 'astock-bot@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo '无改动，跳过提交'
+          else
+            git commit -q -m "云端日更 $(date +'%Y-%m-%d %H:%M') （run ${{ github.run_number }}）"
+            git push || { git pull --rebase --autostash && git push; }
+          fi
+
+      - name: 运行摘要
+        if: always()
+        run: |
+          {
+            echo "## 盘后日更"
+            echo ""
+            echo "- 时间：$(date +'%Y-%m-%d %H:%M:%S %Z')"
+            echo "- 生成步骤：${{ steps.gen.outcome }}"
+            echo "- 产物：$( [ -f index.html ] && stat -c %s index.html || echo '未生成' ) 字节"
+            echo ""
+            if [ -f daily-run.log ]; then
+              echo '### 各步耗时与结果'
+              echo '```'
+              grep -E '^  [✓✗–] ' daily-run.log | tail -30 || tail -40 daily-run.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 留存日志（失败时便于排查）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-run-log
+          path: daily-run.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: 生成步骤失败则整单失败
+        if: steps.gen.outcome == 'failure'
+        run: |
+          echo "::error::daily-update.mjs 退出非 0，请看上面的步骤输出"
+          exit 1

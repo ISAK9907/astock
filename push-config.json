@@ -1,0 +1,20 @@
+{
+  "_说明": "两种推送后端二选一。provider=bark 时填 barkUrl；provider=webhook 时填 webhook.url 与请求模板（用 {title} {body} {group} 占位）。也可用环境变量 BARK_URL / PUSH_WEBHOOK_URL / PUSH_PROVIDER 覆盖。",
+
+  "provider": "bark",
+
+  "_bark_说明": "标准 Bark 协议（官方 https://api.day.app/你的key，或自建 bark-server）。这是最省事的方式。",
+  "barkUrl": "",
+  "group": "DSH盘后",
+  "level": "active",
+  "sound": "",
+
+  "_webhook_说明": "未知格式的推送接口用这个。method 支持 GET/POST；body 里 {title}/{body}/{group} 会被替换。",
+  "webhook": {
+    "url": "",
+    "method": "POST",
+    "contentType": "application/json",
+    "body": "{\"title\":\"{title}\",\"body\":\"{body}\"}",
+    "headers": {}
+  }
+}

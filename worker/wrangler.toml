@@ -1,0 +1,21 @@
+# Cloudflare Worker：A 股看板的实时信号接口
+#
+# signal-worker.js 由 ../build-worker.mjs 自动生成（内联 signal.mjs 的判定逻辑、
+# global-quote.mjs 的全球行情、以及当日的 signal-state.json），不要手改。
+#
+# 部署：
+#   cd worker
+#   npx wrangler login
+#   npx wrangler deploy
+#
+# 部署后会得到一个形如 https://astock-signal.<你的子域>.workers.dev 的地址，
+# 把它填进 ../worker-url.txt，再重跑 node build-dashboard.mjs 并部署看板即可。
+name = "astock-signal"
+main = "signal-worker.js"
+
+# 用较保守的日期，避免 Cloudflare 因「日期晚于其服务器当前时间」而拒绝。
+# 本 Worker 只用到标准的 fetch / Request / Response，不依赖任何新特性。
+compatibility_date = "2024-11-01"
+
+[observability]
+enabled = true

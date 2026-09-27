@@ -1,0 +1,84 @@
+name: 盘前更新
+
+# 北京时间 09:26：拿隔夜美股 + 亚洲早盘（韩/日/台开盘）+ A 股集合竞价，
+# 更新「今日开盘应对」，并把这一条归档进 push-archive.json。
+# 归档之后必须重建看板，否则手机端的推送记录里看不到这一条。
+on:
+  schedule:
+    # 北京时间 09:26 = 01:26 UTC。A 股 09:15-09:25 集合竞价，09:25 出开盘价。
+    - cron: '26 1 * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  group: astock-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  TZ: Asia/Shanghai
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  premarket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: 盘前更新 + 重建看板
+        id: gen
+        continue-on-error: true
+        env:
+          BARK_URL: ${{ secrets.BARK_URL }}
+        run: |
+          set -o pipefail
+          {
+            node premarket.mjs
+            # 归档只写进 push-archive.json，必须重建才有 index.html 的新版本
+            node build-dashboard.mjs
+            cp astock-dashboard.html index.html
+          } 2>&1 | tee premarket-run.log
+
+      - name: 提交并推送
+        if: always()
+        run: |
+          git config user.name  'astock-bot'
+          git config user.email 'astock-bot@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo '无改动，跳过提交'
+          else
+            git commit -q -m "云端盘前 $(date +'%Y-%m-%d %H:%M') （run ${{ github.run_number }}）"
+            git push || { git pull --rebase --autostash && git push; }
+          fi
+
+      - name: 运行摘要
+        if: always()
+        run: |
+          {
+            echo "## 盘前更新"
+            echo ""
+            echo "- 时间：$(date +'%Y-%m-%d %H:%M:%S %Z')"
+            echo "- 生成步骤：${{ steps.gen.outcome }}"
+            echo ""
+            if [ -f premarket-run.log ]; then
+              echo '```'
+              tail -40 premarket-run.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 留存日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: premarket-run-log
+          path: premarket-run.log
+          if-no-files-found: ignore
+          retention-days: 14

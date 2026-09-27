@@ -1,0 +1,34 @@
+# ===== 密钥：绝不入库 =====
+# deploy-config.json 里是 GitHub token，一旦提交进历史就很难彻底清除
+deploy-config.json
+
+# ===== 缓存 / 临时 / 工作目录 =====
+.cache/
+_sh*/
+node_modules/
+.shot/
+*.log
+
+# ===== 本工作区里与「A 股看板」无关的内容 =====
+# 这个目录同时是 DSH 的工作区根，混放了别的项目。只备份看板本身。
+737/
+aviation/
+gesture_keys/
+737复习工具-方案设计.md
+*.exe
+
+# 云端日更（GitHub Actions）相关：本地缓存、wrangler 会话、临时克隆
+.wrangler/
+_ci-clone/
+# pip 装包失败留下的临时目录（权限受限，git 扫不进去只会刷一堆 warning）
+.piptmp/
+
+# DSH GUI 自己的配置转储 / 升级前备份 —— 2026-09-26 被 backup.mjs 误提交进来一次
+# （内容是 GUI 的 cordis/package 配置，跟看板无关，而且 dump 里带 apiKeyEnv 之类的字段名）
+.dsh-dump-config.txt
+.dsh-web-backup-*/
+
+# 说明：看板自己的数据文件（含 daily-long.json 这类 1.5 MB 的）**故意保留在版本控制里**。
+# 它们大多是「日更重算」的，但重算依赖外部数据源（东财 kline 目前被封着，靠新浪兜底维护），
+# 真丢了不一定重建得回来。而 git 的增量压缩对「每天只变一根 bar」的文件非常有效，
+# 实际占用远低于按体积估算。

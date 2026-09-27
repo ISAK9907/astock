@@ -1,0 +1,11 @@
+# 实时信号接口地址（Cloudflare Worker）
+#
+# 留空（或只保留这些注释）= 前端用同源 /signal，即本机的 serve-dashboard.mjs，只有局域网能访问。
+# 填上 Worker 地址（不带结尾斜杠、不带 /signal），GitHub Pages 上也能拿到实时竞价数据。
+#
+# 部署步骤见 worker/README.md。填好后需要重跑：
+#   node build-dashboard.mjs && node deploy-pages.mjs
+#
+# 示例（取消注释并改成你的子域）：
+# https://astock-signal.your-subdomain.workers.dev
+
