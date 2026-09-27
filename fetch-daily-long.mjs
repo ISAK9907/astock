@@ -15,7 +15,7 @@
 //     盘前信号面板的 T 日状态一直钉在昨天。
 //   · 抓不到就把旧历史原样写回，绝不因为一次失败丢数据；新数据比旧文件还旧则拒绝写入。
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { fetchJson, sleep, sinaQuote, ths } from './sources.mjs';
+import { fetchJson, sleep, sinaQuote, ths, emKline } from './sources.mjs';
 
 const H = { Referer: 'https://quote.eastmoney.com/' };
 // 新浪对沪市指数给「手」、对深市指数给「股」，东财一律是「手」；用 amount/volume 比值
@@ -57,13 +57,12 @@ for (const idx of IDX) {
   let bars = null;
   let src = '';
 
-  // ---- 一级：东财 ----
+  // ---- 一级：东财（镜像轮换：机房 IP 下单台时通时断，见 sources.mjs 的 emKline）----
   try {
-    const url =
-      `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${em}` +
-      `&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58` +
-      `&klt=101&fqt=0&end=20500101&lmt=4000`;
-    const j = await fetchJson(url, { headers: H, retries: 4, baseDelay: 2000, timeoutMs: 20000 });
+    const j = await emKline(
+      { secid: em, fields1: 'f1,f2,f3,f4,f5,f6', fields2: 'f51,f52,f53,f54,f55,f56,f57,f58', klt: '101', fqt: '0', lmt: 4000 },
+      { retries: 2, baseDelay: 2000, timeoutMs: 20000 },
+    );
     const k = j?.data?.klines ?? [];
     if (k.length) {
       bars = k.map((s) => {

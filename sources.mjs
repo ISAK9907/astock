@@ -64,6 +64,55 @@ export async function fetchText(url, opts = {}) {
   throw lastErr;
 }
 
+// ---------------------------------------------------------------------------
+// 东财 kline：镜像主机轮换
+// ---------------------------------------------------------------------------
+// 2026-09-27 实测：从 GitHub Actions 的 Azure runner 上，东财 kline 表现为**间歇性可达** ——
+// 同一批请求里 push2his / 1.push2his / push2delay 返回 200（带真实数据），
+// 而 7/21/44/99.push2his 是连接层 000、push2 是 502。另一次探测里六台全 000。
+// 本机（家宽）通常一次就通，所以这个问题只在机房 IP 上暴露，且**时通时断**。
+//
+// 结论：不是「东财封了机房 IP」这种一刀切，而是单台主机不稳定。
+// 与其去找替代数据源（实测 KOSPI/日经/台湾/DAX/美元指数在腾讯没有对应代码，
+// 新浪只有日经，Yahoo/stooq/investing 都是 403），不如把请求分散到多台镜像上重试 ——
+// 六台里任意一台通就能拿到权威数据，且不影响本机现有的抓取行为。
+//
+// ⚠️ 只用**已实测返回同一份数据**的主机。带编号的镜像并非全都存在（7/21/44/99 是连接失败，
+//    不是数据错误，所以放进去也只是浪费一次重试），这里按实测可用性排序。
+export const EM_KLINE_HOSTS = ['push2his', '1.push2his', 'push2delay', '2.push2his', 'push2'];
+// 'push2' 放最后：它实测返回 502（nginx 反代到上游失败），但结构相同，聊胜于无。
+
+/**
+ * 抓东财 kline。按镜像顺序逐个试，任一成功即返回。
+ * @param {{secid:string, fields1:string, fields2:string, klt?:string, fqt?:string, lmt:number, end?:string}} p
+ * @returns 该接口的 JSON（data.klines 为原始行数组）
+ */
+export async function emKline(p, opts = {}) {
+  const { hosts = EM_KLINE_HOSTS, verbose = false, ...rest } = opts;
+  const qs =
+    `secid=${p.secid}&fields1=${p.fields1}&fields2=${p.fields2}` +
+    `&klt=${p.klt ?? '101'}&fqt=${p.fqt ?? '0'}&end=${p.end ?? '20500101'}&lmt=${p.lmt}`;
+  let lastErr;
+  for (const h of hosts) {
+    try {
+      const j = await fetchJson(`https://${h}.eastmoney.com/api/qt/stock/kline/get?${qs}`, {
+        headers: { Referer: 'https://quote.eastmoney.com/' },
+        // 单台内部仍保留重试，但次数压低：跨主机轮换已经提供了冗余，
+        // 在死掉的主机上耗太久会把整轮日更拖长（fetch-global 有 12 条序列）。
+        retries: 2,
+        baseDelay: 600,
+        ...rest,
+      });
+      if (verbose && h !== hosts[0]) console.log(`     （东财 kline 第 ${hosts.indexOf(h) + 1} 台镜像 ${h} 成功）`);
+      return j;
+    } catch (e) {
+      lastErr = e;
+      if (verbose) console.log(`     东财 ${h} 失败：${e.message}`);
+    }
+  }
+  throw new Error(`东财 kline 全部镜像失败（试了 ${hosts.length} 台）：${lastErr?.message}`);
+}
+
 const cachePath = (key) => join(CACHE_DIR, `${key.replace(/[^\w.-]/g, '_')}.json`);
 
 export function readCache(key) {

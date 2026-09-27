@@ -16,7 +16,7 @@
 //    但数值对应腾讯 `us.IXIC`（26936.04），而腾讯 `us.NDX` 是 11.73 的另一个标的 ——
 //    套错会静默写入差几千倍的脏数据。下表三组都用最新收盘价逐个核对过。
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { fetchJson, sleep, tencent } from './sources.mjs';
+import { fetchJson, sleep, tencent, emKline } from './sources.mjs';
 
 const H = { Referer: 'https://quote.eastmoney.com/' };
 // tx=null 表示腾讯没有经核对可用的对应代码
@@ -74,13 +74,12 @@ for (const it of LIST) {
   const old = prevSeries[key]?.bars ?? [];
   let bars = null, src = '';
 
-  // ---- 1. 东财 ----
+  // ---- 1. 东财（镜像轮换：机房 IP 下单台时通时断，见 sources.mjs 的 emKline）----
   try {
-    const url =
-      `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${em}` +
-      `&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58` +
-      `&klt=101&fqt=0&end=20500101&lmt=4000`;
-    const j = await fetchJson(url, { headers: H, retries: 3, baseDelay: 1500 });
+    const j = await emKline(
+      { secid: em, fields1: 'f1,f2,f3,f4,f5,f6', fields2: 'f51,f52,f53,f54,f55,f56,f57,f58', klt: '101', fqt: '0', lmt: 4000 },
+      { retries: 2, baseDelay: 1500, verbose: true },
+    );
     const k = j?.data?.klines ?? [];
     if (!k.length) throw new Error('返回空');
     const rows = k.map((s) => {

@@ -4,7 +4,7 @@
 //         日线收盘（新浪/腾讯）+ 最新一日成交额（新浪 hq）+ 涨跌停（东财股池，主机不同、通常可用）
 //         并保留缓存里的历史若干天，只刷新最新一天
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { fetchJson, fetchText, sleep, sinaQuote } from './sources.mjs';
+import { fetchJson, fetchText, sleep, sinaQuote, emKline } from './sources.mjs';
 
 const H = { Referer: 'https://quote.eastmoney.com/' };
 const UT = '7eea3edcaed734bea9cbfc24409ed989';
@@ -13,13 +13,12 @@ const N_DAYS = 7;
 const compact = (d) => d.replace(/-/g, '');
 const isoOf = (d) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}`;
 
-/** 指数日线（取成交额与交易日序列）—— 东财 */
+/** 指数日线（取成交额与交易日序列）—— 东财，走镜像轮换（机房 IP 下单台时通时断） */
 async function kline(secid, lmt = 12) {
-  const url =
-    `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}` +
-    `&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58` +
-    `&klt=101&fqt=1&end=20500101&lmt=${lmt}`;
-  const j = await fetchJson(url, { headers: H, retries: 2, baseDelay: 1200, timeoutMs: 12000 });
+  const j = await emKline(
+    { secid, fields1: 'f1,f2,f3,f4,f5,f6', fields2: 'f51,f52,f53,f54,f55,f56,f57,f58', klt: '101', fqt: '1', lmt },
+    { retries: 2, baseDelay: 1200, timeoutMs: 12000 },
+  );
   const rows = (j?.data?.klines ?? []).map((s) => {
     const p = s.split(',');
     return { date: p[0], close: Number(p[2]), amount: Number(p[6]) };
