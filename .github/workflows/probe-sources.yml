@@ -34,7 +34,10 @@ jobs:
               out=$(curl -s -m 15 -w '\n%{http_code}' -H "User-Agent: Mozilla/5.0" "$url")
             fi
             code=$(echo "$out" | tail -1)
-            body=$(echo "$out" | head -c 150 | tr -d '\n')
+            # ⚠️ 不能用 `head` 截断：head 提前退出会给 curl/echo 发 SIGPIPE，
+            #    上一次就是它把后面 4 项探测整个吞掉（日志里只剩 "Broken pipe"）。
+            body=$(echo "$out" | tr -d '\n')
+            body="${body:0:150}"
             printf '%-34s HTTP %-6s %s\n' "$name" "$code" "$body"
           }
 
@@ -68,7 +71,15 @@ jobs:
           probe 'stooq ^spx' 'https://stooq.com/q/d/l/?s=%5Espx&i=d'
           probe 'yahoo ^GSPC' 'https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d'
           probe '东财 全球报价 ulist' 'https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=100.KS11,100.N225,100.TWII,100.GDAXI,100.UDI,100.XIN9&fields=f1,f2,f3,f12,f14'
+          probe '东财 ulist 走镜像' 'https://1.push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=100.KS11,100.N225&fields=f1,f2,f3,f12,f14'
           probe '新浪 全球实时 hq' 'https://hq.sinajs.cn/list=int_dji,int_nasdaq,int_hangseng,int_nikkei,gb_$dji' 'https://finance.sina.com.cn/'
+          probe '新浪 日经实时' 'https://hq.sinajs.cn/list=int_nikkei,int_kospi,int_twii,int_dax,int_dji' 'https://finance.sina.com.cn/'
+          echo
+          echo '===== 备用全球历史源 ====='
+          probe '腾讯 美国指数 day' 'https://web.ifzq.gtimg.cn/appstock/app/usfqkline/get?param=usDJI,day,,,5,qfq'
+          probe '腾讯 韩国综合' 'https://qt.gtimg.cn/q=usKS11,usN225,usTWII,usGDAXI,usUDI,usXIN9'
+          probe 'investing 德国DAX' 'https://api.investing.com/api/financialdata/8827/historical/chart/?interval=P1D&pointscount=5'
+          probe 'nasdaq api 日经' 'https://api.nasdaq.com/api/quote/N225/historical?assetclass=index&fromdate=2026-09-01&todate=2026-09-27&limit=5'
 
       - name: 小结
         if: always()
