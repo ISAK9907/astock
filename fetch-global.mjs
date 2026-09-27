@@ -19,21 +19,77 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fetchJson, sleep, tencent, emKline } from './sources.mjs';
 
 const H = { Referer: 'https://quote.eastmoney.com/' };
-// tx=null 表示腾讯没有经核对可用的对应代码
+// tx=null 表示腾讯没有经核对可用的对应代码；yf=Yahoo Finance 代码（第三条降级链）
 const LIST = [
-  { key: 'spx', em: '100.SPX', tx: 'us.INX', name: '标普500', txVerified: true },
-  { key: 'ndx', em: '100.NDX', tx: 'us.IXIC', name: '纳斯达克', txVerified: true },
-  { key: 'kospi', em: '100.KS11', tx: null, name: '韩国KOSPI' },
-  { key: 'nikkei', em: '100.N225', tx: null, name: '日经225' },
-  { key: 'twii', em: '100.TWII', tx: null, name: '台湾加权' },
-  { key: 'hsi', em: '100.HSI', tx: 'hkHSI', name: '恒生指数', txVerified: true },
-  { key: 'gold', em: '101.GC00Y', tx: null, name: 'COMEX黄金' },
-  { key: 'xau', em: '122.XAU', tx: null, name: '伦敦金现货' },
-  { key: 'dxy', em: '100.UDI', tx: null, name: '美元指数' },
-  { key: 'a50', em: '104.CN00Y', tx: null, name: '富时中国A50期指连续' },
-  { key: 'xin9', em: '100.XIN9', tx: null, name: '富时中国A50指数' },
-  { key: 'dax', em: '100.GDAXI', tx: null, name: '德国DAX' },
+  { key: 'spx', em: '100.SPX', tx: 'us.INX', yf: '^GSPC', name: '标普500', txVerified: true },
+  { key: 'ndx', em: '100.NDX', tx: 'us.IXIC', yf: '^IXIC', name: '纳斯达克', txVerified: true },
+  { key: 'kospi', em: '100.KS11', tx: null, yf: '^KS11', name: '韩国KOSPI' },
+  { key: 'nikkei', em: '100.N225', tx: null, yf: '^N225', name: '日经225' },
+  { key: 'twii', em: '100.TWII', tx: null, yf: '^TWII', name: '台湾加权' },
+  { key: 'hsi', em: '100.HSI', tx: 'hkHSI', yf: '^HSI', name: '恒生指数', txVerified: true },
+  { key: 'gold', em: '101.GC00Y', tx: null, yf: 'GC=F', name: 'COMEX黄金' },
+  { key: 'xau', em: '122.XAU', tx: null, yf: 'XAUUSD=X', name: '伦敦金现货' },
+  { key: 'dxy', em: '100.UDI', tx: null, yf: 'DX-Y.NYB', name: '美元指数' },
+  { key: 'a50', em: '104.CN00Y', tx: null, yf: 'XIN9.FGI', name: '富时中国A50期指连续' },
+  { key: 'xin9', em: '100.XIN9', tx: null, yf: 'XIN9.FGI', name: '富时中国A50指数' },
+  { key: 'dax', em: '100.GDAXI', tx: null, yf: '^GDAXI', name: '德国DAX' },
 ];
+
+// ---------------------------------------------------------------------------
+// 第三条降级链：Yahoo Finance
+//   为什么需要：东财 kline 从 GitHub Actions 的 Azure runner 上时通时断（甚至连续两次全挂），
+//   而腾讯只覆盖 12 个品种里的 3 个（spx/ndx/hsi），新浪只有日经 —— 剩下 6 个
+//   （KOSPI / 日经 / 台湾加权 / 富时A50指数 / 德国DAX / 美元指数）在云端会永久冻结。
+//   实测：Yahoo 从 runner 上返回 200（本机是 403，所以**这段代码无法在本地验证**，
+//   只能推上去跑云端看覆盖行 —— 见 .github/workflows/probe-sources.yml）。
+//
+// ⚠️ 错标的陷阱：腾讯的 us.UDI 是「股息收益ETF」、us.DAX 是「DAX德国指数ETF」，
+//    代码存在但完全是另一个东西。Yahoo 代码同样可能指向 ETF 而非指数，而这里**无法本地校验**，
+//    所以加了 saneAgainstOld()：只要旧数据里存在同一天的收盘价，新数据就必须在同量级，
+//    否则整条丢弃并大声报错 —— 宁可留旧数据，也不能静默写进差几百倍的脏值。
+// ---------------------------------------------------------------------------
+const YF_H = { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' };
+
+async function yahooDaily(sym) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=10y&interval=1d`;
+  const r = await fetch(url, { headers: YF_H, signal: AbortSignal.timeout(25000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const o = await r.json();
+  const res = o?.chart?.result?.[0];
+  const ts = res?.timestamp ?? [];
+  const q = res?.indicators?.quote?.[0] ?? {};
+  const rows = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = q.close?.[i];
+    if (c == null) continue; // Yahoo 会给出 null 占位（停牌/无数据）
+    const d = new Date(ts[i] * 1000).toISOString().slice(0, 10);
+    rows.push({ d, o: q.open?.[i] ?? c, c, h: q.high?.[i] ?? c, l: q.low?.[i] ?? c, v: q.volume?.[i] ?? 0 });
+  }
+  if (!rows.length) throw new Error('无有效日线');
+  return rows;
+}
+
+/**
+ * 与旧数据核对量级：找最近一个两边都有的日期，比收盘价。
+ * 差得太远说明抓错了标的（ETF/期货/另一个指数），直接拒绝。
+ */
+function saneAgainstOld(old, rows, name) {
+  if (!old.length || !rows.length) return true;
+  const oldMap = new Map(old.map((b) => [b.d, b.c]));
+  for (let i = rows.length - 1; i >= 0 && i > rows.length - 30; i--) {
+    const oc = oldMap.get(rows[i].d);
+    if (oc > 0) {
+      const dev = rows[i].c / oc - 1;
+      if (Math.abs(dev) > 0.15) {
+        console.warn(`  ✗ ${name} 标的核对失败：${rows[i].d} 新值 ${rows[i].c} vs 旧值 ${oc}（偏差 ${(dev * 100).toFixed(1)}%）—— 丢弃这条新数据，保留旧数据`);
+        return false;
+      }
+      return true;
+    }
+  }
+  return true; // 没有重叠日期就无法核对，放行（首次抓取时属于这种情况）
+}
+
 
 const prev = existsSync('global-daily.json') ? JSON.parse(readFileSync('global-daily.json', 'utf8')) : null;
 const prevSeries = prev?.series ?? {};
@@ -67,10 +123,10 @@ const dropPartial = (bars) => {
 
 const out = { generatedAt: new Date().toISOString(), series: {} };
 const missing = [];
-let fromEm = 0, fromTx = 0, fromPrev = 0;
+let fromEm = 0, fromTx = 0, fromYf = 0, fromPrev = 0;
 
 for (const it of LIST) {
-  const { key, em, tx, name } = it;
+  const { key, em, tx, yf, name } = it;
   const old = prevSeries[key]?.bars ?? [];
   let bars = null, src = '';
 
@@ -103,15 +159,28 @@ for (const it of LIST) {
         console.warn(`  ! ${name} 腾讯也失败：${String(e2.message).slice(0, 40)}`);
       }
     }
-    // ---- 3. 旧文件 ----
+    // ---- 3. Yahoo（云端可达；本机 403，所以只在东财+腾讯都失败时才会走到）----
+    if (!bars && yf) {
+      try {
+        const rows = await yahooDaily(yf);
+        if (saneAgainstOld(old, rows, name)) {
+          bars = mergeBars(old, dropPartial(rows));
+          src = `Yahoo(${yf})`;
+          fromYf++;
+        }
+      } catch (e3) {
+        console.warn(`  ! ${name} Yahoo 也失败：${String(e3.message).slice(0, 40)}`);
+      }
+    }
+    // ---- 4. 旧文件 ----
     if (!bars && old.length) { bars = old.map((b) => ({ ...b })); src = '旧数据'; fromPrev++; }
     if (!bars) missing.push(name);
   }
 
   if (!bars?.length) { console.warn(`  ✗ ${name} 无任何数据`); continue; }
-  out.series[key] = { name, em, tx, bars, src };
-  const tag = src.startsWith('东财') ? '✓' : src.startsWith('腾讯') ? '◐' : '↺';
-  console.log(`  ${tag} ${name.padEnd(18)} ${src.padEnd(14)} ${String(bars.length).padStart(4)} 根  ${bars[0].d} → ${bars.at(-1).d}`);
+  out.series[key] = { name, em, tx, yf, bars, src };
+  const tag = src.startsWith('东财') ? '✓' : src.startsWith('腾讯') ? '◐' : src.startsWith('Yahoo') ? '◑' : '↺';
+  console.log(`  ${tag} ${name.padEnd(18)} ${src.padEnd(16)} ${String(bars.length).padStart(4)} 根  ${bars[0].d} → ${bars.at(-1).d}`);
   await sleep(700);
 }
 
@@ -125,15 +194,23 @@ out.coverage = {
   got: Object.keys(out.series).length,
   total: LIST.length,
   missing: missing.map((n) => LIST.find((x) => x.name === n)?.key).filter(Boolean),
-  bySource: { eastmoney: fromEm, tencent: fromTx, previous: fromPrev },
+  bySource: { eastmoney: fromEm, tencent: fromTx, yahoo: fromYf, previous: fromPrev },
+  // 静默冻结是这套降级链最危险的失败模式（作业报绿、数据却停更），
+  // 所以把「哪些品种在沿用旧数据、旧到哪天」直接写进文件，让看板能显式提示。
+  stale: Object.entries(out.series)
+    .filter(([, v]) => v.src === '旧数据')
+    .map(([k, v]) => ({ key: k, name: v.name, last: v.bars.at(-1)?.d ?? null })),
 };
 writeFileSync('global-daily.json', JSON.stringify(out), 'utf8');
 
 const total = LIST.length;
 const got = Object.keys(out.series).length;
-console.log(`\nwrote global-daily.json：覆盖 ${got}/${total} 个品种（东财 ${fromEm} · 腾讯 ${fromTx} · 沿用旧数据 ${fromPrev}）`);
+console.log(`\nwrote global-daily.json：覆盖 ${got}/${total} 个品种（东财 ${fromEm} · 腾讯 ${fromTx} · Yahoo ${fromYf} · 沿用旧数据 ${fromPrev}）`);
+if (out.coverage.stale.length) {
+  console.warn(`  ⚠️ 沿用旧数据的 ${out.coverage.stale.length} 个：${out.coverage.stale.map((s) => `${s.name}(至${s.last})`).join('、')}`);
+  console.warn('     它们只有东财 kline 有完整历史；东财恢复后会自动补上（无需改代码）。');
+}
 if (missing.length) {
   console.warn(`  ⚠️ 仍缺 ${missing.length} 个：${missing.join('、')}`);
-  console.warn(`     这 ${missing.length} 个只有东财 kline 有；等它解封后每天 15:40 的日更会自动补上（无需改代码）。`);
   console.warn('     分析脚本 analyze-global*.mjs 请自行判断样本覆盖，不要假定 12 个品种都在。');
 }

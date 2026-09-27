@@ -1,13 +1,24 @@
-name: 盘前更新
+name: 盘前更新（手动 / 兜底）
 
 # 北京时间 09:26：拿隔夜美股 + 亚洲早盘（韩/日/台开盘）+ A 股集合竞价，
 # 更新「今日开盘应对」，并把这一条归档进 push-archive.json。
 # 归档之后必须重建看板，否则手机端的推送记录里看不到这一条。
+#
+# ⚠️ 为什么默认**不排定时**：
+#   本机在 09:26 也跑 premarket.mjs（计划任务 DSH_Premarket），而且它是「本机为主」的那一路。
+#   云端没法判断本机跑没跑 —— 本机 premarket 只写 premarket.json，**不重建 index.html**，
+#   所以 daily.yml 用的那套「看 index.html 的 generatedAt 是不是今天」的探针在这里失效。
+#   两条路都跑就会互相覆盖 push-archive.json（各写各的副本），所以先设成手动：
+#   电脑没开机时，在手机上点一次 Actions → 盘前更新 → Run workflow 即可。
+#   要让它在电脑没开机时自动兜底，需要先让本机 premarket 也把 premarket.json 推到仓库里
+#   （有了那个标记，按 daily.yml 的写法加一个 freshness gate 就能自动判断）。
 on:
-  schedule:
-    # 北京时间 09:26 = 01:26 UTC。A 股 09:15-09:25 集合竞价，09:25 出开盘价。
-    - cron: '26 1 * * 1-5'
   workflow_dispatch:
+    inputs:
+      force:
+        description: '强制运行（目前默认就会运行，此项仅为将来加自动兜底时预留）'
+        type: boolean
+        default: true
 
 concurrency:
   group: astock-update
@@ -62,10 +73,11 @@ jobs:
         if: always()
         run: |
           {
-            echo "## 盘前更新"
+            echo "## 盘前更新（云端兜底）"
             echo ""
             echo "- 时间：$(date +'%Y-%m-%d %H:%M:%S %Z')"
             echo "- 生成步骤：${{ steps.gen.outcome }}"
+            echo "- 注意：如果本机在 09:26 已经跑过，这次是重复的，仓库里的 push-archive.json 会以本次为准。"
             echo ""
             if [ -f premarket-run.log ]; then
               echo '```'

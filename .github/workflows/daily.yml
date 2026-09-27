@@ -13,8 +13,15 @@ on:
     # 排在 15:40 之后是给「跌停池已定稿」留余量；GitHub 的定时任务高峰期可能延迟数十分钟，无妨。
     - cron: '50 7 * * 1-5'
   workflow_dispatch:
+    inputs:
+      force:
+        description: '忽略「本机今天已跑过」的检查，强制在云端跑一遍'
+        type: boolean
+        default: false
 
-# 盘前/盘后两次运行不会重叠，但手动触发可能撞上定时触发
+# 本机为主、云端兜底：本机的计划任务在 15:40 生成并部署 index.html，
+# 云端在 15:50 先看仓库里的 index.html 是不是今天生成的 —— 是就跳过，避免两边互相覆盖。
+# 本机没开机 / 没跑成时，index.html 还停在昨天，云端就接手。
 concurrency:
   group: astock-update
   cancel-in-progress: false
@@ -34,20 +41,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 检查本机今天是否已经跑过
+        id: fresh
+        run: |
+          stamp=$(grep -o '"generatedAt":"[^"]*"' index.html 2>/dev/null | head -1 | cut -d'"' -f4)
+          d_bj=$(date +%F); d_utc=$(date -u +%F)
+          echo "index.html generatedAt = ${stamp:-（读取失败）}   今天(北京)=$d_bj  今天(UTC)=$d_utc  force=${{ inputs.force }}"
+          if [ '${{ inputs.force }}' = 'true' ]; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 手动指定 force，照常在云端运行'
+          elif [ -n "$stamp" ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天已经生成过看板，云端跳过（本机为主）'
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 本机今天没跑，云端接手（兜底）'
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.fresh.outputs.fresh != 'true'
         with:
           node-version: '24'
 
       - uses: actions/setup-python@v5
+        if: steps.fresh.outputs.fresh != 'true'
         with:
           python-version: '3.12'
 
       - name: 安装 baostock
+        if: steps.fresh.outputs.fresh != 'true'
         run: pip install --quiet baostock
 
       # 唯一未验证的风险点：东财/同花顺可能封机房 IP（runner 在 Azure）。
       # 放在长跑之前探一下，失败也能一眼看出是「被墙」还是「脚本 bug」。
       - name: 环境自检
+        if: steps.fresh.outputs.fresh != 'true'
         run: |
           echo "日期：$(date +'%Y-%m-%d %H:%M:%S %Z')  |  Node $(node -v)  |  $(python --version 2>&1)"
           python -c "import baostock; print('baostock OK', baostock.__version__ if hasattr(baostock,'__version__') else '')"
@@ -65,6 +90,7 @@ jobs:
 
       - name: 抓数据 → 重算 → 生成看板
         id: gen
+        if: steps.fresh.outputs.fresh != 'true'
         continue-on-error: true # 失败也要往下走，把已完成的部分提交掉
         env:
           # 没配这个 secret 也不影响：push-bark 会打印「未配置」然后继续
@@ -74,7 +100,7 @@ jobs:
           node daily-update.mjs --no-deploy --no-worker --no-backup 2>&1 | tee daily-run.log
 
       - name: 生成 Pages 入口 index.html
-        if: always()
+        if: always() && steps.fresh.outputs.fresh != 'true'
         run: |
           if [ ! -f astock-dashboard.html ]; then
             echo "::error::astock-dashboard.html 未生成（build-dashboard.mjs 失败？）"
@@ -84,7 +110,7 @@ jobs:
           ls -l index.html
 
       - name: 提交并推送
-        if: always()
+        if: always() && steps.fresh.outputs.fresh != 'true'
         run: |
           git config user.name  'astock-bot'
           git config user.email 'astock-bot@users.noreply.github.com'
@@ -103,8 +129,13 @@ jobs:
             echo "## 盘后日更"
             echo ""
             echo "- 时间：$(date +'%Y-%m-%d %H:%M:%S %Z')"
-            echo "- 生成步骤：${{ steps.gen.outcome }}"
-            echo "- 产物：$( [ -f index.html ] && stat -c %s index.html || echo '未生成' ) 字节"
+            if [ '${{ steps.fresh.outputs.fresh }}' = 'true' ]; then
+              echo "- **本机今天已生成过看板，云端跳过**（本机为主、云端兜底）"
+              echo "- 要强制在云端跑：workflow_dispatch 勾上 force"
+            else
+              echo "- 生成步骤：${{ steps.gen.outcome }}"
+              echo "- 产物：$( [ -f index.html ] && stat -c %s index.html || echo '未生成' ) 字节"
+            fi
             echo ""
             if [ -f daily-run.log ]; then
               echo '### 各步耗时与结果'
