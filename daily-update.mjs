@@ -20,11 +20,20 @@ const steps = [
   ['事件日历', 'fetch-events.mjs'],
   ['日线数据', 'fetch-candles.mjs'],
   ['涨跌停/成交额', 'market-data.mjs'],
+  // ⚠️ 长历史日线必须排在「统计重算」之前。
+  //    analyze-dt.mjs 用 daily-long.json 的索引取当日行情（idxOf.get(d)，取不到就 continue），
+  //    sentiment-backtest.mjs 同理。原先它排在第 9 步（统计之后），导致日更当天
+  //    daily-long 还停在前一交易日 → 当天整天被跳过 → 恐慌情绪/跌停统计**永远晚一个交易日**。
+  //    2026-09-28 发现：dt-counts 已有当天（744 天），统计窗口却仍是 742 天、末日 09-24，
+  //    还连带报出「与 sentiment.json 的 sent 有 27/742 天不一致」（两边窗口差一天）。
+  ['长历史日线', 'fetch-daily-long.mjs'],
   ['跌停三维', 'update-dt-daily.mjs'],
+  // 情绪/回测 必须排在 统计重算 之前：它写 sentiment.json，而 analyze-dt 的一致性自检
+  // 就是拿自己算的 sent 去比 sentiment.json。反过来的话比的是上一版文件（窗口差一天），
+  // 每天都报一堆假不一致。sentiment-backtest 只读 dt-counts + daily-long，不依赖 dt-stats，所以能安全前移。
+  ['情绪/回测', 'sentiment-backtest.mjs'],
   ['统计重算', 'analyze-dt.mjs'],
   ['盘中跌停曲线', 'fetch-dt-intraday.mjs'],
-  ['情绪/回测', 'sentiment-backtest.mjs'],
-  ['长历史日线', 'fetch-daily-long.mjs'],
   ['全球市场日线', 'fetch-global.mjs'],
   ['生成看板', 'build-dashboard.mjs'],
 ];

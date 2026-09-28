@@ -36,9 +36,10 @@ let allDates = Object.keys(raw).sort();
 if (allDates.length > WINDOW) allDates = allDates.slice(-WINDOW);
 
 const rows = [];
+const skipped = [];
 for (const d of allDates) {
   const i = idxOf.get(d);
-  if (i === undefined || i < 1) continue;
+  if (i === undefined || i < 1) { skipped.push(d); continue; }
   const v = raw[d];
   const cap = v.allCap ? (v.dtCap / v.allCap) * 100 : 0;
   const nDt = v.dt / N.dt, nCap = cap / N.cap, nMem = v.mem / N.mem;
@@ -108,6 +109,22 @@ const TIERS = tierDefs();
 }
 
 console.log(`样本 ${rows.length} 天 (${rows[0].d} → ${rows.at(-1).d}) | 基准反转命中率 ${baseLow.toFixed(1)}%\n`);
+
+// ⚠️ 静默漏掉最新交易日是最危险的失败模式：面板照常渲染、作业报绿，只是「今天」永远缺席。
+//   成因是步骤顺序 —— daily-long.json 若在统计之后才更新，当天的行情索引就取不到。
+if (skipped.length) {
+  const newest = allDates.at(-1);
+  if (skipped.includes(newest)) {
+    console.error(
+      `\n✗ 最新交易日 ${newest} 在 dt-counts.json 里，但 daily-long.json 里没有它的行情 —— 当天被整段跳过。\n` +
+        `  统计会停在 ${rows.at(-1).d}，也就是永远晚一个交易日。\n` +
+        `  检查 daily-update.mjs 的步骤顺序：fetch-daily-long.mjs 必须在 analyze-dt.mjs 之前。\n`,
+    );
+    process.exitCode = 1;
+  } else {
+    console.warn(`  ⚠️ 有 ${skipped.length} 天在 dt-counts 里但不在 daily-long 里，已跳过：${skipped.slice(0, 6).join(' ')}${skipped.length > 6 ? ' …' : ''}`);
+  }
+}
 
 console.log('=== 四个指标 vs 上证指数（相关性）===');
 console.log('指标            与当日      p       与未来1日    p       与未来5日    p');
