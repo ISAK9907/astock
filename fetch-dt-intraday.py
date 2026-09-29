@@ -75,13 +75,46 @@ def fetch_daily(code, start, end):
     return []
 
 
+def _save(days):
+    """统一出口：只在真正有内容时写文件，避免把空字典盖掉已有历史。"""
+    with open(OUT, "w", encoding="utf-8") as f:
+        json.dump({
+            "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "source": "baostock 5分钟线还原：curve=该 5 分钟 bar 收盘价等于跌停价的家数；touch=累计首触家数",
+            "slots": N_SLOT,
+            "days": days,
+        }, f, ensure_ascii=False, indent=1)
+    print(f"\nwrote {OUT}（{len(days)} 天）", flush=True)
+
+
+def marked_days(stats):
+    """标记日 = 情绪分 sent 超过粉档门槛（分位制，窗口无关）。
+
+    ⚠️ 这里原本写的是 `v.get("score", 0) >= 1.25` —— 一个**写死的绝对分门槛**，
+    而看板（build-dashboard.mjs 的 markedDays）用的是 `sent >= tiers[0].sentLo`。
+    两套标准会漂移：2026-09-28 当时 score=1.26 被选中并写了一条曲线，
+    随后当日数据结算成 score=1.15，看板不再把它当标记日，这里却留着一条全零曲线。
+    改成与看板同源（读 dt-stats.json 里的 tiers[0].sentLo），两边永远一致。
+    读不到 tiers/sent 时才退回旧的绝对分门槛（老文件兼容）。
+    """
+    tiers = stats.get("tiers") or []
+    if tiers and "sentLo" in tiers[0]:
+        lo = tiers[0]["sentLo"]
+        got = [k for k, v in stats["daily"].items() if v.get("sent") is not None and v["sent"] >= lo]
+        if got:
+            print(f"标记日判定：情绪分 ≥ {lo}（与看板同源），命中 {len(got)} 天")
+            return sorted(got)
+        print("⚠️ 按 sent 门槛一天都没命中，退回绝对分 score ≥ 1.25")
+    return sorted(k for k, v in stats["daily"].items() if v.get("score", 0) >= 1.25)
+
+
 def main():
     with open(os.path.join(ROOT, "dt-stats.json"), encoding="utf-8") as f:
         stats = json.load(f)
     # 两个易错点：
     #   1) dt-stats.json 的 "marked" 是「标记日数量」(int)，不是列表
     #   2) daily 的键已经是 ISO 格式 (2025-11-21)，不要再做 YYYYMMDD 切片
-    marked_iso = sorted(k for k, v in stats["daily"].items() if v.get("score", 0) >= 1.25)
+    marked_iso = marked_days(stats)
     n_by_day = {d: stats["daily"][d]["dt"] for d in marked_iso}
 
     # 增量：已有的标记日直接跳过；若全部已覆盖则立即退出（避免日更时白跑全市场扫描）
@@ -92,9 +125,23 @@ def main():
                 existing = json.load(f).get("days", {})
         except Exception:
             existing = {}
+    # ⚠️ used=0 的条目是抓取失败的残渣（全零曲线），不能算「已覆盖」——
+    #    否则那条曲线会永远留在文件里，而且每次日更都报「均已有曲线」把重试也挡掉。
+    bad = [d for d, v in existing.items() if not v.get("used")]
+    if bad:
+        print(f"丢弃 {len(bad)} 条抓取失败的残渣条目（used=0）：{', '.join(sorted(bad))}")
+        for d in bad:
+            existing.pop(d, None)
+    # 只保留当前仍是标记日的条目：窗口滑动后有些日子不再够格，留着是死数据
+    drop = [d for d in existing if d not in set(marked_iso)]
+    if drop:
+        print(f"剔除 {len(drop)} 条已不再是标记日的旧曲线：{', '.join(sorted(drop))}")
+        for d in drop:
+            existing.pop(d, None)
     todo = [d for d in marked_iso if d not in existing]
     if not todo:
         print(f"标记日 {len(marked_iso)} 个均已有曲线，无需回填（{OUT}）")
+        _save(existing)
         return
     print(f"标记日 {len(marked_iso)} 个，其中 {len(todo)} 个待回填: {todo[0]} ~ {todo[-1]}", flush=True)
     marked_iso = todo
@@ -169,6 +216,11 @@ def main():
             if first is not None:
                 for sl in range(first, N_SLOT):
                     touched[sl] += 1
+        if used == 0:
+            # 一只都没解析出来（baostock 当日 5 分钟线还没落地 / 全市场扫描没命中）
+            # → 不写条目。写进去的话 used=0 的残渣会被当成「已覆盖」，永远不再重试。
+            print(f"   [{i+1}/{len(marked_iso)}] {d}  ✗ 无有效个股（found={len(day_stocks[d])}），本次不写入，下次重试", flush=True)
+            continue
         out_days[d] = {
             "n": n_by_day[d],
             "found": len(day_stocks[d]),
@@ -181,14 +233,7 @@ def main():
               f"  (统计 {n_by_day[d]}, 有效 {used}/{len(day_stocks[d])})", flush=True)
 
     bs.logout()
-    with open(OUT, "w", encoding="utf-8") as f:
-        json.dump({
-            "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "source": "baostock 5分钟线还原：curve=该 5 分钟 bar 收盘价等于跌停价的家数；touch=累计首触家数",
-            "slots": N_SLOT,
-            "days": out_days,
-        }, f, ensure_ascii=False, indent=1)
-    print(f"\nwrote {OUT}", flush=True)
+    _save(out_days)
 
 
 if __name__ == "__main__":
