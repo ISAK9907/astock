@@ -32,6 +32,9 @@ self.addEventListener('fetch', (e) => {
 
   // 实时接口绝不缓存
   if (/\/(signal|health|premarket)(\?|$)/.test(url.pathname)) return;
+  // version.json 也绝不缓存：手机端靠轮询它发现自己看到的页面是旧版本 → 自动刷新。
+  // 它一旦进了 Cache Storage，轮询就永远读到同一个值，自动同步会**静默失效**。
+  if (url.pathname.endsWith('/version.json')) return;
 
   // 导航：网络优先，断网回退
   if (req.mode === 'navigate') {
