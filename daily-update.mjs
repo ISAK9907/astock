@@ -62,6 +62,8 @@ const steps = [
   // 每天都报一堆假不一致。sentiment-backtest 只读 dt-counts + daily-long，不依赖 dt-stats，所以能安全前移。
   ['情绪/回测', 'sentiment-backtest.mjs'],
   ['统计重算', 'analyze-dt.mjs'],
+  // 开盘跳空情景统计：只依赖 daily-long，排在它之后、生成看板之前即可
+  ['开盘情景', 'analyze-open-scenario.mjs'],
   ['盘中跌停曲线', 'fetch-dt-intraday.mjs'],
   ['全球市场日线', 'fetch-global.mjs'],
   ['生成看板', 'build-dashboard.mjs'],

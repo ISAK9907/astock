@@ -5,6 +5,19 @@ import { tiersOpt } from './sentiment-map.mjs';
 
 const data = JSON.parse(readFileSync('market-data.json', 'utf8'));
 const tr = JSON.parse(readFileSync('trends-m5.json', 'utf8'));
+// 开盘跳空情景统计（analyze-open-scenario.mjs 生成）。
+// ⚠️ 必须在这里（早于任何使用它的模板拼接）定义：它是 const，
+//    在声明前引用会抛暂时性死区 ReferenceError，而且堆栈里没有 "警告/wrote" 字样，
+//    一眼看不出是构建崩了还是正常——踩过一次。
+//    缺失时整块面板不渲染，不让看板因为一个分析文件缺失而崩掉。
+const SCENARIO = (() => {
+  try {
+    return JSON.parse(readFileSync('open-scenario.json', 'utf8'));
+  } catch {
+    console.warn('警告: open-scenario.json 不可读，开盘情景面板将省略（运行 node analyze-open-scenario.mjs）');
+    return null;
+  }
+})();
 const NOW = new Date();
 // 本次构建的唯一标记，写进页面也写进 version.json。
 // 手机端拿页面里这个值和 version.json 里的比 —— 不一致说明服务端已经有新版本了。
@@ -382,8 +395,7 @@ const sigReviewHtml = !sigReview
       </div>`;
     })();
 
-const sigState = SIG.find((s) => s.key === 'sh') ?? SIG[0] ?? null;
-const sigPanelHtml = !sigState
+const sigState = SIG.find((s) => s.key === 'sh') ?? SIG[0] ?? null;const sigPanelHtml = !sigState
   ? ''
   : `<div class="panel" data-panel="signal"><div class="phead"><h2>明日开盘应对<span class="hint">T 日状态 × T+1 集合竞价跳空 · 开盘后自动更新</span></h2>
     <span class="hint" id="sigStamp">等待竞价…</span></div>
@@ -401,27 +413,65 @@ const sigPanelHtml = !sigState
         }).join('')}
       </table>
       <div class="sect" style="margin-top:8px">竞价跳空后的建议（上证口径）</div>
-      <div id="sigDecision" class="sigbox">竞价数据将在开盘后自动获取；下方是条件清单。</div>
+      <div id="sigDecision" class="sigbox">竞价数据将在开盘后自动获取。</div>
     </div>
     <div>
-      <div class="sect">条件清单（按 T 日状态预演）</div>
-      <table class="stbl" id="sigPlaybook">
-        <tr><th>情形</th><th>建议</th><th>历史期望</th><th>时段一致</th></tr>
-        ${playbook(sigState)
-          .map(
-            (r) =>
-              `<tr><td>${esc(r.cond)}</td><td style="color:${r.act.color}">${esc(r.act.label)}</td>` +
-              `<td>${r.expect == null ? '—' : `${r.expect >= 0 ? '+' : ''}${r.expect.toFixed(2)}%`}</td><td>${r.era}</td></tr>`,
-          )
-          .join('')}
-      </table>
-      <div class="tiny" style="margin-top:6px;line-height:1.6">
-        期望值口径：<b>偏减仓</b>为「开盘卖出、收盘买回」的收益；<b>持有/偏持有</b>为日内（开→收）收益。均未扣成本（往返约 0.12%）。
+      <div class="sect">为什么不再给「按 T 日状态预演」的条件清单</div>
+      <div class="tiny" style="line-height:1.7">
+        原来这里是一张「T日状态 × 跳空阈值 → 建议」的表。它的触发条件很严（跳空 &gt;±1% <b>且</b> T 日涨跌超阈值），
+        16 年 3978 个交易日里<b>只触发 105 次（2.6%）</b>——大多数日子整张表都是「观望」，参考价值有限。<br>
+        改为按<b>跳空幅度本身</b>统计历史情景，见下方「开盘跳空 · 历史情景参考」面板：
+        跳空每天都发生，每一档都有样本，而且是 16 年 × 4 指数的宏观规律，不需要每天跟踪。<br>
+        <span style="color:var(--dim)">本面板保留的是「当日实况」：T 日状态、实时竞价跳空、以及前 5 日的理论/实际复盘对照。</span>
       </div>${sigReviewHtml}
     </div>
   </div>
   <div class="foot" id="sigFoot">读秒中…</div>
 </div>`;
+
+// 开盘跳空的历史情景参考（数据来自 analyze-open-scenario.mjs）。
+// 这是一张「查表用」的宏观参考，不参与每日信号判断，所以单独成panel。
+const scenarioPanelHtml = !SCENARIO
+  ? ''
+  : (() => {
+      // 极端高开那几天的汇总。这一行是整块面板最关键的一句话：
+      // 「日内回落」和「全天涨跌」是两件事 —— 极端高开之后日内多半回踩，
+      // 但当天整体往往仍然收涨（因为跳空本身够大）。不把这两句一起说会误导成「高开必跌」。
+      const ex = SCENARIO.extremeDays ?? [];
+      const fell = ex.filter((g) => g.intra < 0).length;
+      const up = ex.filter((g) => g.full > 0).length;
+      const mIntra = ex.length ? ex.reduce((a, g) => a + g.intra, 0) / ex.length : 0;
+      const mFull = ex.length ? ex.reduce((a, g) => a + g.full, 0) / ex.length : 0;
+      const sum = ex.length
+        ? `<b>这 ${ex.length} 天的共同点</b>：${fell}/${ex.length} 天<b>日内回落</b>（平均 ${mIntra >= 0 ? '+' : ''}${mIntra.toFixed(2)}%），
+           但 ${up}/${ex.length} 天<b>全天仍然收涨</b>（平均 ${mFull >= 0 ? '+' : ''}${mFull.toFixed(2)}%）。<br>
+           <b>所以它不是「高开会跌」</b>，而是「极端高开之后日内容易回踩，当天整体往往还是涨的」——
+           含义是<b>不要在极端高开时追高</b>（买在开盘等于买在当日高点），而不是看跌。`
+        : '';
+      return `<div class="panel" data-panel="scenario">
+  <div class="phead"><h2>开盘跳空 · 历史情景参考<span class="hint">${Object.keys(SCENARIO.indices).length} 个指数 · ${SCENARIO.indices.sh?.from ?? ''} 起 ${SCENARIO.indices.sh?.base?.n ?? ''} 个交易日</span></h2>
+    <button class="pbtn" data-desc="scenario" type="button">说明</button></div>
+  <div class="tiny" style="margin-bottom:6px;line-height:1.7">
+    自变量用 <b>跳空 ÷ 20日波动率（σ20）</b>，不是绝对跳空幅度 —— 因为 +2% 在低波动环境是极端事件、在高波动环境只是噪音。
+    <span style="color:var(--dim)">实测按绝对跳空分档时，各档日内回落率都贴着基准 45~48%，看不出方向；换成这个口径后单调关系才显现。</span>
+  </div>
+  <div id="scenTabs" class="scen-tabs"></div>
+  <div id="scenTable"></div>
+  <div class="sect" style="margin-top:12px">历史上「极端高开」的 ${ex.length} 个交易日 <span class="hint">跳空 ÷ σ20 ≥ 2，即高开幅度超过近期波动率的 2 倍</span></div>
+  <div id="scenExt"></div>
+  ${sum}
+  <div class="tiny" style="margin-top:8px;line-height:1.7">
+    <b>怎么用</b>：这是一张背景参考，不是预测。判断某个开盘是否属于「历史上容易被回补」的情形，
+    从而<b>避免在极端高开时追高</b>；反向的，低开（z ≤ −1）后日内偏反弹。<b>不需要每天跟踪。</b><br>
+    <b>⚠️ 三点必须知道</b>：<br>
+    ① 极端档<b>样本极少</b> —— z≥2 在 16 年里只有 <b>${ex.length} 个交易日</b>，点估计不可靠，请连同样本量一起看；<br>
+    ② 四个指数<b>当天一起跳空、高度相关</b>，所以「4 个指数都命中」不等于 4 个独立样本，别把胜率当 4 倍证据；<br>
+    ③ 16 年市场结构变过（涨跌停制度、注册制、量化占比），故给了前后分段一致性；<b>只有既显著又稳健的档位才值得当规律</b>，
+    其余（尤其样本 &lt; 20 的）只当个案。<br>
+    本表只呈现公开市场数据的历史统计，<b>不构成投资建议</b>。
+  </div>
+</div>`;
+    })();
 
 // 给服务端 /signal 用的轻量状态文件（只含 T 日状态，不含 1.6MB 历史）
 if (SIG.length) {
@@ -714,9 +764,30 @@ const PDESC = {
 恐慌类型按跌停股的市值结构划分，<b>仅在家数 ≥ 10 时判定</b>：微盘踩踏（小盘 ≥65%）、权重杀跌（大盘 ≥50%）、全面抛售。<br>
 此前做过的「情绪分 → 反弹概率」机器学习式预测因样本外表现不敌基准，已从面板移除。右下角那张表是<b>更朴素的条件概率</b>（不建模、不挑变量，直接把情绪分阈值与次日涨跌对上），留作背景参考 —— 里面标红的阈值在当前窗口下已无区分度，<b>不要把整张表当作可用信号</b>。`,
   },
+  scenario: {
+    title: '开盘跳空 · 历史情景参考',
+    html: `<b>这张面板和上面那张的关系</b>：上面「明日开盘应对」是<b>当日实况</b>（T 日状态 + 实时竞价跳空 + 前 5 日复盘）；
+    这张是<b>宏观背景参考</b>，回答「历史上这类开盘之后通常怎么走」。<br>
+<b>为什么拆成两张</b>：原来的「T日状态 × 跳空阈值 → 建议」条件清单，触发条件很严（跳空 &gt;±1% 且 T 日涨跌超阈值），
+16 年 3978 个交易日里只触发 <b>105 次（2.6%）</b>，绝大多数日子整张表都是「观望」。而跳空每天都在发生 ——
+按跳空本身分档，每一档都有样本，才是可查的。<br>
+<b>为什么自变量是「跳空 ÷ 20日波动率」(z) 而不是绝对跳空幅度</b>：<br>
+&nbsp;&nbsp;· 实测按<b>绝对跳空</b>分档时，各档的日内回落率都贴着基准 45~48%，<b>看不出方向</b>（+2% 这种档位 16 年只有 5~13 天）；<br>
+&nbsp;&nbsp;· 换成 z 之后关系立刻干净且<b>四个指数一致</b>：z 越大，日内回落概率越高、平均日内收益越低。
+z≥2 时四家的日内回落率是 83~100%、平均日内 −2.0~−2.8%；而 z 在 −2~−1 时回落率 35~41%（低于基准），平均日内为正。<br>
+&nbsp;&nbsp;· 直觉：+2% 在低波动环境是<b>极端事件</b>，在高波动环境只是<b>噪音</b>。按波动率归一化才摘出「意外程度」。<br>
+<b>三个必须一起看的东西</b>：<br>
+&nbsp;&nbsp;① <b>样本量</b> —— z≥2 在 16 年里只有 10 个交易日，「100% 回落」是 7 个样本里的 7 个，不是 100 次里的 100 次；<br>
+&nbsp;&nbsp;② <b>显著性</b> —— 与「本指数全样本日内回落率」做二项检验，标 \`*\`（p&lt;0.05）/ \`**\`（p&lt;0.01）。注意这张表有 ~40 个格子，
+多格比较下出现单个 p&lt;0.05 属正常，Bonferroni 门槛要压到 0.05/40 ≈ 0.00125，只有达到那个量级才真正稳；<br>
+&nbsp;&nbsp;③ <b>分段稳健</b> —— 以 2018 年中为界的前后两段，方向是否一致。只有「既显著又稳健」的档位才值得当规律。<br>
+<b>⚠️ 一个容易犯的统计错误</b>：四个指数是同一天一起跳空的，把它们合并<b>不会</b>增加独立样本（伪重复）。
+所以本表逐指数单独算，其他指数只用来交叉验证方向是否一致 —— 不要因为「4 个指数都命中了」就以为有了 4 倍证据。<br>
+<b>用途定位</b>：判断某个开盘是否属于「历史上容易被回补」的情形，从而避免在极端高开时追高；
+以及认识到低开后日内偏反弹。<b>它是背景参考，不是预测，也不构成投资建议。</b>`,
+  },
   update: {
-    title: '自动同步 / 右下角「更新」按钮',
-    html: `<b>自动同步（不用操作）</b>：页面每隔约 60 秒问一次服务端「版本变了没」，变了就弹一下提示然后自动刷新。从后台切回前台时也会立刻查一次 —— 掏出手机那一刻最希望看到最新数据。<br>
+    title: '自动同步 / 右下角「更新」按钮',    html: `<b>自动同步（不用操作）</b>：页面每隔约 60 秒问一次服务端「版本变了没」，变了就弹一下提示然后自动刷新。从后台切回前台时也会立刻查一次 —— 掏出手机那一刻最希望看到最新数据。<br>
 每次构建都会写一份极小的 <code>version.json</code>（几百字节），页面拿自己内嵌的构建标记跟它比。<span class="u-dim">细节：请求带唯一 query 绕开 CDN 缓存；<code>sw.js</code> 里把 <code>version.json</code> 排除在 Service Worker 缓存之外 —— 否则轮询永远读到缓存里同一个值，这个功能会<b>静默失效</b>（不报错，只是永远不刷新）。离线时静默跳过，不打扰。</span><br>
 <b>右下角「更新」按钮（手动触发，仅局域网）</b>：按一下让运行看板的那台电脑立即抓一次最新行情并重算，跑完自动刷新。日更平时每日 15:40 自动跑，这个是手动补一次。<br>
 ⚠️ 按钮是向「当前页面的主机」发请求，所以要用形如 <code>http://192.168.110.159:8848/</code> 的地址打开（手机与电脑同一 Wi-Fi）。从 GitHub Pages（<code>https://...</code>）打开时按不动 —— 一是 https 页面请求家里的 http 主机会被浏览器按混合内容拦掉，二是不在家时没有到那台电脑的路由。这时点按只会给出提示，不会发请求。<br>
@@ -752,6 +823,7 @@ const pwaJs = readFileSync('pwa.js', 'utf8');
 const rollerJs = readFileSync('date-roller.js', 'utf8');
 const updateJs = readFileSync('update-button.js', 'utf8'); // 右下角「更新」按钮（局域网内可用）
 const autosyncJs = readFileSync('autosync.js', 'utf8'); // 发现服务端有新版本时自动刷新
+const scenarioJs = readFileSync('scenario.js', 'utf8'); // 开盘跳空历史情景参考表
 const touchJs = readFileSync('touch.js', 'utf8');
 const sentChartJs = readFileSync('sentiment-chart.js', 'utf8'); // 恐慌情绪散点图（面板左下方）
 // 实时信号接口地址：留空 = 用同源 /signal（本机 serve-dashboard.mjs）；
@@ -965,6 +1037,15 @@ html[data-theme="light"] .updpanel code{background:#e8edf6;color:#1d4ed8}
 .synctoast span{color:var(--dim);font-size:11px}
 .synctoast .synclink{color:#5b8def;cursor:pointer;text-decoration:underline}
 html[data-theme="light"] .synctoast .synclink{color:#1d4ed8}
+/* ==================== 开盘跳空情景参考 ==================== */
+.scen-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+.scen-tabs .pbtn{padding:3px 10px;font-size:11px}
+table.stbl.scen{width:100%;font-variant-numeric:tabular-nums}
+table.stbl.scen th,table.stbl.scen td{padding:4px 5px;font-size:11px;white-space:nowrap}
+table.stbl.scen td:first-child{white-space:normal}
+table.stbl.scen td:nth-child(2),table.stbl.scen th:nth-child(2),
+table.stbl.scen td:nth-child(3),table.stbl.scen th:nth-child(3),
+table.stbl.scen td:nth-child(4),table.stbl.scen th:nth-child(4){text-align:right}
 
 /* ==================== 顶部日期滚轮 ==================== */
 .rollerbar{display:flex;align-items:stretch;gap:6px;margin:0 0 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 6px}
@@ -1102,6 +1183,8 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 
 ${sigPanelHtml}
 
+${scenarioPanelHtml}
+
 <div class="panel" data-panel="intra"><div class="phead"><h2>三大指数 ${tr.days.length} 日 5 分钟线<span class="hint">${tr.days[0].slice(4, 6)}/${tr.days[0].slice(6)} ~ ${tr.days.at(-1).slice(4, 6)}/${tr.days.at(-1).slice(6)} · ${tr.days.length} 个交易日 · 近 ${tr.days.length} 日用 5 分钟档，更早的几天由 15 分钟档补齐</span></h2>
     <span class="hint">上：累计涨跌幅（区间首点为基准）· 下：每日归零（当日首点为基准）· 两图缩放与拖动联动</span></div>
   <div class="legend">${intra.legend}</div>
@@ -1167,6 +1250,7 @@ ${statePanel}
 </div>
 <div class="prestore" id="prestore" hidden><b>已隐藏的面板</b><div id="prestoreList"></div></div>
 <script>window.PDESC = ${JSON.stringify(PDESC)};</script>
+<script>window.SCENARIO = ${JSON.stringify(SCENARIO)};</script>
 <script>window.SIGNAL_URL = ${JSON.stringify(SIGNAL_URL)};</script>
 <script>window.PUSHLOG = ${JSON.stringify(PUSHLOG)};</script>
 <script>window.BUILD_STAMP = ${JSON.stringify(BUILD_STAMP)};</script>
@@ -1178,6 +1262,7 @@ ${statePanel}
 <script>${sentChartJs}</script>
 <script>${updateJs}</script>
 <script>${autosyncJs}</script>
+<script>${scenarioJs}</script>
 </body></html>`;
 
 writeFileSync('astock-dashboard.html', html, 'utf8');
