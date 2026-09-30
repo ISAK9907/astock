@@ -198,15 +198,23 @@ console.log(`\n--- 推送内容 ---\n${title}\n${body}\n---------------`);
 // 归档到 push-archive.json，供看板顶部的日期滚轮回看（不论是否真的推送都存）
 try { appendPush('close', title, body, today); } catch (e) { console.log(`  ! 推送归档失败: ${e.message}`); }
 
+// 推送：默认**没有配置就静默跳过**，不再打印成 ✗ 失败。
+// 原因：每天都红一句「未配置 Bark 地址」，会让人对日志里的红色麻木 ——
+// 到真出问题时反而看不见。用户明确表示不需要推送，所以这里只留一行中性说明。
 if (SKIP_PUSH) {
-  console.log('(--no-push) 跳过推送');
+  console.log('  – 推送手机           跳过（--no-push）');
+  results.push({ name: '推送手机', ok: true, skipped: true, ms: 0 });
 } else {
   const cfg = loadConfig();
-  if (!cfg.barkUrl) {
-    console.log('✗ 未配置 Bark 地址：请编辑 push-config.json 的 barkUrl，或设置环境变量 BARK_URL');
+  const target = cfg.barkUrl || cfg.webhook?.url;
+  if (!target) {
+    console.log('  – 推送手机           未配置（不需要推送就保持这样；要开启见 push-config.json）');
+    results.push({ name: '推送手机', ok: true, skipped: true, ms: 0 });
   } else {
+    const t0 = Date.now();
     const r = await push(title, body);
-    console.log(r.ok ? '✓ 已推送到 iPhone' : `✗ 推送失败: ${r.message}`);
+    console.log(r.ok ? '✓ 已推送到手机' : `✗ 推送失败: ${r.message}`);
+    results.push({ name: '推送手机', ok: !!r.ok, ms: Date.now() - t0, err: r.ok ? undefined : r.message });
   }
 }
 

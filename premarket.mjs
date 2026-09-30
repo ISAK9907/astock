@@ -146,10 +146,12 @@ writeFileSync(
 );
 
 if (SKIP_PUSH) {
-  log('(--no-push) 跳过推送');
+  log('  – 推送手机           跳过（--no-push）');
 } else {
   const cfg = loadConfig();
-  if (!cfg.barkUrl && !cfg.webhook?.url) log('✗ 未配置推送地址（push-config.json）');
+  // 和 daily-update.mjs 保持一致：没配置就是中性说明，不打印成 ✗ 失败 ——
+  // 天天红一句会让人对日志里的红色麻木，真出问题反而看不见。
+  if (!cfg.barkUrl && !cfg.webhook?.url) log('  – 推送手机           未配置（不需要推送就保持这样）');
   else {
     const r = await push(title, body);
     log(r.ok ? '✓ 已推送到手机' : `✗ 推送失败: ${r.message}`);
