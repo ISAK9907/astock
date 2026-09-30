@@ -1,6 +1,6 @@
 // 盘后日更：更新全部数据 → 重算统计 → 生成看板 → 推送手机
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, appendFileSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { push, loadConfig } from './push-bark.mjs';
@@ -9,6 +9,35 @@ import { appendPush } from './push-archive.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 process.chdir(HERE);
+
+// ---------- 单实例锁 ----------
+// 手机网页上的「更新」按钮会触发一次日更，而 15:40 的计划任务也可能同时开跑。
+// 两个日更并行会同时改同一批 JSON（candles/daily-long/dt-counts/看板），
+// 互相覆盖出半新半旧的混合状态 —— 这种损坏很难事后辨认。
+// 所以谁先拿到锁谁跑，后来的立刻退出（退出码 3，调用方据此提示「已在更新中」）。
+const LOCK = join(HERE, '.daily-update.lock');
+function lockHolder() {
+  try {
+    const t = JSON.parse(readFileSync(LOCK, 'utf8'));
+    if (!t?.pid) return null;
+    process.kill(t.pid, 0); // 进程不存在会抛错 → 说明是上次崩溃留下的僵尸锁
+    return t;
+  } catch {
+    return null;
+  }
+}
+{
+  const h = lockHolder();
+  if (h) {
+    console.error(`✗ 已有日更在运行（pid ${h.pid}，启动于 ${h.at}），本次退出，避免并发改同一批文件。`);
+    process.exit(3);
+  }
+  writeFileSync(LOCK, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }), 'utf8');
+  const release = () => { try { unlinkSync(LOCK); } catch { /* 已删 */ } };
+  process.on('exit', release);
+  process.on('SIGINT', () => { release(); process.exit(130); });
+  process.on('SIGTERM', () => { release(); process.exit(143); });
+}
 
 const SKIP_PUSH = process.argv.includes('--no-push');
 const SKIP_INTRADAY = process.argv.includes('--no-intraday');

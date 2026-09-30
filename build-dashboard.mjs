@@ -711,6 +711,15 @@ const PDESC = {
 恐慌类型按跌停股的市值结构划分，<b>仅在家数 ≥ 10 时判定</b>：微盘踩踏（小盘 ≥65%）、权重杀跌（大盘 ≥50%）、全面抛售。<br>
 此前做过的「情绪分 → 反弹概率」机器学习式预测因样本外表现不敌基准，已从面板移除。右下角那张表是<b>更朴素的条件概率</b>（不建模、不挑变量，直接把情绪分阈值与次日涨跌对上），留作背景参考 —— 里面标红的阈值在当前窗口下已无区分度，<b>不要把整张表当作可用信号</b>。`,
   },
+  update: {
+    title: '右下角「更新」按钮',
+    html: `<b>作用</b>：按一下就让运行看板的那台电脑<b>立即抓一次最新行情并重算</b>，跑完页面会自动刷新。相当于手动触发一次日更（平时每日 15:40 自动跑）。<br>
+<b>⚠️ 只在局域网里有效</b>：按钮是向「当前页面的主机」发请求。所以要用形如 <code>http://192.168.110.159:8848/</code> 的地址打开看板，且手机与电脑在同一 Wi-Fi。<br>
+从 GitHub Pages（<code>https://...</code>）打开的页面<b>按不动</b> —— 一是 https 页面请求家里的 http 主机会被浏览器按混合内容拦掉，二是不在家时根本没有到那台电脑的路由。这时点按只会给出提示，不会发请求。<br>
+<b>交易时段会先确认</b>：09:30-11:30 / 13:00-15:00 之间抓到的当日行情是不完整的（成交量、涨跌停家数都偏小），会先弹确认框。跑完的数据下一次正常日更会覆盖修正。<br>
+<b>安全性</b>：这个接口只接受<b>内网来源</b>（按 TCP 对端地址判断，不信 Host 头），并要求带自定义请求头 <code>X-Astock-Update</code> —— 跨站请求带不上自定义头、带了又会触发 CORS 预检（本服务不应答预检），所以不用 token 也能挡住网页被诱导触发的 CSRF。<br>
+<b>并发保护</b>：日更有单实例锁。若 15:40 的计划任务正在跑，手机再按按钮会被拒绝并提示「已在更新中」，不会两个日更同时改同一批文件。`,
+  },
   ztdt: {
     title: '涨停 / 跌停家数',
     html: `<b>数据源</b>：东方财富涨跌停股池（<code>getTopicZTPool</code> / <code>getTopicDTPool</code>），显示最近 7 个交易日。<br>
@@ -737,6 +746,7 @@ const signalJs = readFileSync('signal.js', 'utf8');
 const themeJs = readFileSync('theme.js', 'utf8');
 const pwaJs = readFileSync('pwa.js', 'utf8');
 const rollerJs = readFileSync('date-roller.js', 'utf8');
+const updateJs = readFileSync('update-button.js', 'utf8'); // 右下角「更新」按钮（局域网内可用）
 const touchJs = readFileSync('touch.js', 'utf8');
 const sentChartJs = readFileSync('sentiment-chart.js', 'utf8'); // 恐慌情绪散点图（面板左下方）
 // 实时信号接口地址：留空 = 用同源 /signal（本机 serve-dashboard.mjs）；
@@ -914,6 +924,33 @@ h1{margin-right:96px}
 .pwatip{position:fixed;top:12px;right:16px;z-index:29;max-width:260px;background:var(--card);border:1px solid var(--line);
   border-radius:8px;padding:6px 10px;font-size:11px;color:var(--dim);box-shadow:0 2px 10px rgba(0,0,0,.3)}
 .pwatip[hidden]{display:none}
+/* ==================== 右下角「更新」按钮 ==================== */
+/* 放右下而不是挤右上那堆按钮里：手机上拇指够得着，且不遮挡标题 */
+.updbtn{position:fixed;right:16px;bottom:16px;z-index:31;display:flex;align-items:center;gap:6px;
+  background:var(--card);border:1px solid var(--line);color:var(--fg);border-radius:22px;
+  padding:9px 15px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1;
+  box-shadow:0 3px 14px rgba(0,0,0,.42)}
+.updbtn:hover{border-color:#5b8def}
+.updbtn:disabled{opacity:.6;cursor:default}
+.updbtn.busy{border-color:#f59e0b;color:#f59e0b}
+.updbtn.ok{border-color:#43d19a;color:#43d19a}
+.updbtn.err{border-color:#ef4d5a;color:#ef4d5a}
+@keyframes updspin{to{transform:rotate(360deg)}}
+.updbtn.busy .upd-ico{animation:updspin 1.1s linear infinite}
+.updbtn .upd-ico{display:block;width:13px;height:13px}
+.updpanel{position:fixed;right:16px;bottom:64px;z-index:31;width:min(330px,calc(100vw - 32px));
+  background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+  font-size:11px;color:var(--dim);box-shadow:0 6px 22px rgba(0,0,0,.45);line-height:1.7}
+.updpanel[hidden]{display:none}
+.updpanel .u-h{color:var(--fg);font-weight:600;margin-bottom:4px}
+.updpanel .u-dim{color:var(--dim);opacity:.85}
+.updpanel code{background:rgba(120,140,180,.16);padding:1px 4px;border-radius:3px;font-size:10px}
+.updpanel .u-x{float:right;cursor:pointer;color:var(--dim);font-size:14px;line-height:1;padding:0 2px}
+.updpanel .u-x:hover{color:var(--fg)}
+.updpanel .u-log{max-height:120px;overflow:auto;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);
+  font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:10px;white-space:pre-wrap;word-break:break-all;color:var(--dim)}
+html[data-theme="light"] .updpanel code{background:#e8edf6;color:#1d4ed8}
+
 /* ==================== 顶部日期滚轮 ==================== */
 .rollerbar{display:flex;align-items:stretch;gap:6px;margin:0 0 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 6px}
 .rollerbar[hidden]{display:none}
@@ -1040,6 +1077,11 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 </button>
 <button class="themebtn pwabtn" id="pwaBtn" type="button" title="安装到桌面" hidden style="top:46px">⤓ 安装</button>
 <div class="pwatip" id="pwaTip" hidden>iPhone/iPad：点「分享」→「添加到主屏幕」，可全屏离线查看</div>
+<div class="updpanel" id="updPanel" hidden><span class="u-x" id="updClose" title="收起">×</span><div id="updBody"></div><div class="u-log" id="updLog"></div></div>
+<button class="updbtn" id="updBtn" type="button" title="让主机抓取最新数据">
+  <svg class="upd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+  <span id="updLabel">更新</span>
+</button>
 <div class="sub">数据截至 ${last.date} 收盘 · 生成于 ${NOW.toLocaleString('zh-CN')}</div>
 <div class="kpis">${kpis}</div>
 
@@ -1118,6 +1160,7 @@ ${statePanel}
 <script>${pwaJs}</script>
 <script>${panelsJs}</script>
 <script>${sentChartJs}</script>
+<script>${updateJs}</script>
 </body></html>`;
 
 writeFileSync('astock-dashboard.html', html, 'utf8');

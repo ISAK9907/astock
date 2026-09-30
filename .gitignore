@@ -23,6 +23,9 @@ _ci-clone/
 # pip 装包失败留下的临时目录（权限受限，git 扫不进去只会刷一堆 warning）
 .piptmp/
 
+# 日更的单实例锁：内容是本机进程号，跟仓库无关；残留下来反而会挡住下一次日更
+.daily-update.lock
+
 # DSH GUI 自己的配置转储 / 升级前备份 —— 2026-09-26 被 backup.mjs 误提交进来一次
 # （内容是 GUI 的 cordis/package 配置，跟看板无关，而且 dump 里带 apiKeyEnv 之类的字段名）
 .dsh-dump-config.txt

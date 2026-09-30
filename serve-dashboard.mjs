@@ -1,8 +1,12 @@
 // 手机查看看板用的极简静态服务器（零依赖）
 // 只暴露看板 HTML 本身，不开放工作区其他文件。
-// 另提供 /signal：开盘后返回实时集合竞价跳空 + 盘前信号（同源，浏览器可直接取）。
+// 另提供：
+//   /signal        开盘后返回实时集合竞价跳空 + 盘前信号（同源，浏览器可直接取）
+//   POST /update   手机上按「更新」按钮 → 在本机跑一次日更
+//   /update-status 轮询日更进度（状态 + 日志尾），跑完由前端自动刷新页面
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, openSync, closeSync, statSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { networkInterfaces } from 'node:os';
@@ -12,6 +16,7 @@ import { globalQuotes, forecastGap } from './global-quote.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FILE = join(HERE, 'astock-dashboard.html');
 const STATE = join(HERE, 'signal-state.json');
+const RUN_LOG = join(HERE, 'update-run.log');
 const PORT = Number(process.env.PORT ?? 8848);
 const HOST = '0.0.0.0';
 
@@ -99,12 +104,144 @@ function lanIPs() {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// 手机触发更新
+// ---------------------------------------------------------------------------
+// 两个必要的限制：
+//   1) 只接受**内网来源**。这个接口会在电脑上跑一条完整流水线（几十秒），
+//      端口又绑在 0.0.0.0 上，所以必须挡住公网来源。判断依据是 TCP 对端地址，
+//      不是 Host 头（Host 可以随便伪造）。
+//   2) 必须带自定义头 X-Astock-Update。跨站表单/图片请求带不上自定义头，
+//      而带自定义头的跨源 fetch 会触发 CORS 预检 —— 我们不应答预检，
+//      浏览器就会拦掉。这样不用引入 token 也能防 CSRF。
+const PRIVATE_RE = /^(::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/;
+function isPrivate(addr) {
+  if (!addr) return false;
+  return PRIVATE_RE.test(addr.replace(/^::ffff:/, ''));
+}
+
+/** 是否处于 A 股连续竞价时段（用来提示「现在跑会拿到不完整的当日数据」） */
+function inTradingHours(now = new Date()) {
+  const wd = now.getDay();
+  if (wd === 0 || wd === 6) return false;
+  const m = now.getHours() * 60 + now.getMinutes();
+  return (m >= 9 * 60 + 30 && m < 11 * 60 + 30) || (m >= 13 * 60 && m < 15 * 60);
+}
+
+let job = null; // { startedAt, endedAt, code, err }
+
+function tailOf(file, n) {
+  try {
+    const t = readFileSync(file, 'utf8');
+    return t.split('\n').filter((l) => l.trim()).slice(-n);
+  } catch {
+    return [];
+  }
+}
+
+function startUpdate() {
+  if (job && !job.endedAt) return { started: false, reason: 'running' };
+  if (job?.endedAt && Date.now() - job.endedAt < 3000) {
+    // 刚跑完，防抖：避免连点两次又立刻重跑
+    return { started: false, reason: 'just-finished' };
+  }
+  // stdio 用文件描述符而不是 'pipe'：一来日更耗时几十秒，管道缓冲区会把它挂住；
+  // 二来这个进程在受限沙箱里跑时，spawn 管道会 EPERM。写文件最稳，还能让前端 tail 进度。
+  let fd;
+  try {
+    fd = openSync(RUN_LOG, 'w');
+  } catch (e) {
+    return { started: false, reason: 'log-open-failed', error: String(e.message) };
+  }
+  let proc;
+  try {
+    // UPDATE_SCRIPT 是留给测试的接缝：默认跑真正的日更；测试时指向一个假脚本，
+    // 免得只为验证接口就在交易时段真跑一遍流水线（那会写出半截的当日数据）。
+    const script = process.env.UPDATE_SCRIPT || 'daily-update.mjs';
+    proc = spawn(process.execPath, [script], {
+      cwd: HERE,
+      stdio: ['ignore', fd, fd],
+      env: process.env,
+    });
+  } finally {
+    closeSync(fd); // 子进程已经继承，父进程这份要关掉
+  }
+  const j = { startedAt: Date.now(), endedAt: null, code: null, pid: proc.pid };
+  job = j;
+  proc.on('exit', (code) => { j.endedAt = Date.now(); j.code = code; });
+  proc.on('error', (e) => { j.endedAt = Date.now(); j.code = -1; j.err = String(e.message); });
+  console.log(`[update] 已启动日更 pid=${proc.pid}`);
+  return { started: true, pid: proc.pid };
+}
+
+function updateStatus() {
+  const j = job;
+  // 没有 job 就不回日志：update-run.log 是上一次的残留，进程刚重启时读它会把
+  // 上一回的进度显示成当前进度（状态是 idle、日志却是旧内容）。
+  const tail = j ? tailOf(RUN_LOG, 14) : [];
+  // 进度按「已报告的步骤行」计数（✓ 和 ✗ 都算）——失败的那步也是走完了才知道失败。
+  // 但要单独暴露失败数，否则失败时进度条看着像正常推进。
+  const stepLines = tail.filter((l) => /^  [✓✗–] /.test(l));
+  const done = stepLines.length;
+  const failedSteps = stepLines.filter((l) => /^  ✗ /.test(l)).length;
+  const last = tail.filter((l) => l.trim()).at(-1) ?? '';
+  return {
+    state: !j ? 'idle' : j.endedAt ? (j.code === 0 ? 'done' : 'failed') : 'running',
+    startedAt: j?.startedAt ?? null,
+    endedAt: j?.endedAt ?? null,
+    elapsedMs: j ? (j.endedAt ?? Date.now()) - j.startedAt : 0,
+    exitCode: j?.code ?? null,
+    error: j?.err ?? null,
+    tradingHours: inTradingHours(),
+    stepsDone: done,
+    stepsFailed: failedSteps,
+    stepsTotal: 11,
+    current: last.replace(/^\s+/, '').slice(0, 120),
+    tail,
+  };
+}
+
 const server = createServer((req, res) => {
   const url = (req.url ?? '/').split('?')[0];
+  const remote = req.socket.remoteAddress ?? '';
 
   if (url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('ok');
+    return;
+  }
+
+  if (url === '/update-status') {
+    if (!isPrivate(remote)) {
+      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: '仅限内网访问' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(updateStatus()));
+    return;
+  }
+
+  if (url === '/update') {
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: '请用 POST' }));
+      return;
+    }
+    if (!isPrivate(remote)) {
+      console.log(`[update] 拒绝非内网来源 ${remote}`);
+      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: '仅限内网访问' }));
+      return;
+    }
+    if (req.headers['x-astock-update'] !== '1') {
+      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: '缺少 X-Astock-Update 头（防跨站触发）' }));
+      return;
+    }
+    const r = startUpdate();
+    res.writeHead(r.started ? 202 : 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ ...r, status: updateStatus() }));
     return;
   }
 
