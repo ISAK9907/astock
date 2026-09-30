@@ -79,6 +79,9 @@ if (CHECK_ONLY) {
 // ---------- 3. 上传看板 + PWA 资源 ----------
 const FILES = [
   ['astock-dashboard.html', 'index.html', 'text/html'],
+  // version.json：手机端靠轮询它发现自己看到的是旧版本 → 自动刷新。
+  // 必须一并上传，否则线上页面永远等不到版本变化。
+  ['version.json', 'version.json', 'application/json'],
   ['manifest.webmanifest', 'manifest.webmanifest', 'application/manifest+json'],
   ['sw.js', 'sw.js', 'application/javascript'],
   ['icon-192.png', 'icon-192.png', 'image/png'],

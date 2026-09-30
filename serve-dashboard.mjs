@@ -263,18 +263,21 @@ const server = createServer((req, res) => {
 
   // 只允许白名单路径（看板本体 + PWA 资源）
   const PWA = {
-    '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
-    '/sw.js': ['sw.js', 'application/javascript; charset=utf-8'],
-    '/icon-192.png': ['icon-192.png', 'image/png'],
-    '/icon-512.png': ['icon-512.png', 'image/png'],
-    '/icon-maskable-512.png': ['icon-maskable-512.png', 'image/png'],
+    // version.json 让手机端发现自己看到的是旧版本 → 自动刷新；必须 no-store，
+    // 否则客户端轮询读到缓存值，自动同步就静默失效了。
+    '/version.json': ['version.json', 'application/json; charset=utf-8', 'no-store'],
+    '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8', 'public, max-age=3600'],
+    '/sw.js': ['sw.js', 'application/javascript; charset=utf-8', 'public, max-age=3600'],
+    '/icon-192.png': ['icon-192.png', 'image/png', 'public, max-age=3600'],
+    '/icon-512.png': ['icon-512.png', 'image/png', 'public, max-age=3600'],
+    '/icon-maskable-512.png': ['icon-maskable-512.png', 'image/png', 'public, max-age=3600'],
   };
   if (PWA[url]) {
-    const [name, type] = PWA[url];
+    const [name, type, cache] = PWA[url];
     const p = join(HERE, name);
     if (!existsSync(p)) { res.writeHead(404); res.end('404'); return; }
     const buf = readFileSync(p);
-    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=3600', 'Content-Length': buf.length, 'Service-Worker-Allowed': '/' });
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache, 'Content-Length': buf.length, 'Service-Worker-Allowed': '/' });
     res.end(buf);
     return;
   }

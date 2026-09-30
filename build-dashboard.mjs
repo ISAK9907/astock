@@ -6,6 +6,9 @@ import { tiersOpt } from './sentiment-map.mjs';
 const data = JSON.parse(readFileSync('market-data.json', 'utf8'));
 const tr = JSON.parse(readFileSync('trends-m5.json', 'utf8'));
 const NOW = new Date();
+// 本次构建的唯一标记，写进页面也写进 version.json。
+// 手机端拿页面里这个值和 version.json 里的比 —— 不一致说明服务端已经有新版本了。
+const BUILD_STAMP = NOW.toISOString();
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const days = (d) => {
@@ -712,13 +715,14 @@ const PDESC = {
 此前做过的「情绪分 → 反弹概率」机器学习式预测因样本外表现不敌基准，已从面板移除。右下角那张表是<b>更朴素的条件概率</b>（不建模、不挑变量，直接把情绪分阈值与次日涨跌对上），留作背景参考 —— 里面标红的阈值在当前窗口下已无区分度，<b>不要把整张表当作可用信号</b>。`,
   },
   update: {
-    title: '右下角「更新」按钮',
-    html: `<b>作用</b>：按一下就让运行看板的那台电脑<b>立即抓一次最新行情并重算</b>，跑完页面会自动刷新。相当于手动触发一次日更（平时每日 15:40 自动跑）。<br>
-<b>⚠️ 只在局域网里有效</b>：按钮是向「当前页面的主机」发请求。所以要用形如 <code>http://192.168.110.159:8848/</code> 的地址打开看板，且手机与电脑在同一 Wi-Fi。<br>
-从 GitHub Pages（<code>https://...</code>）打开的页面<b>按不动</b> —— 一是 https 页面请求家里的 http 主机会被浏览器按混合内容拦掉，二是不在家时根本没有到那台电脑的路由。这时点按只会给出提示，不会发请求。<br>
-<b>交易时段会先确认</b>：09:30-11:30 / 13:00-15:00 之间抓到的当日行情是不完整的（成交量、涨跌停家数都偏小），会先弹确认框。跑完的数据下一次正常日更会覆盖修正。<br>
-<b>安全性</b>：这个接口只接受<b>内网来源</b>（按 TCP 对端地址判断，不信 Host 头），并要求带自定义请求头 <code>X-Astock-Update</code> —— 跨站请求带不上自定义头、带了又会触发 CORS 预检（本服务不应答预检），所以不用 token 也能挡住网页被诱导触发的 CSRF。<br>
-<b>并发保护</b>：日更有单实例锁。若 15:40 的计划任务正在跑，手机再按按钮会被拒绝并提示「已在更新中」，不会两个日更同时改同一批文件。`,
+    title: '自动同步 / 右下角「更新」按钮',
+    html: `<b>自动同步（不用操作）</b>：页面每隔约 60 秒问一次服务端「版本变了没」，变了就弹一下提示然后自动刷新。从后台切回前台时也会立刻查一次 —— 掏出手机那一刻最希望看到最新数据。<br>
+每次构建都会写一份极小的 <code>version.json</code>（几百字节），页面拿自己内嵌的构建标记跟它比。<span class="u-dim">细节：请求带唯一 query 绕开 CDN 缓存；<code>sw.js</code> 里把 <code>version.json</code> 排除在 Service Worker 缓存之外 —— 否则轮询永远读到缓存里同一个值，这个功能会<b>静默失效</b>（不报错，只是永远不刷新）。离线时静默跳过，不打扰。</span><br>
+<b>右下角「更新」按钮（手动触发，仅局域网）</b>：按一下让运行看板的那台电脑立即抓一次最新行情并重算，跑完自动刷新。日更平时每日 15:40 自动跑，这个是手动补一次。<br>
+⚠️ 按钮是向「当前页面的主机」发请求，所以要用形如 <code>http://192.168.110.159:8848/</code> 的地址打开（手机与电脑同一 Wi-Fi）。从 GitHub Pages（<code>https://...</code>）打开时按不动 —— 一是 https 页面请求家里的 http 主机会被浏览器按混合内容拦掉，二是不在家时没有到那台电脑的路由。这时点按只会给出提示，不会发请求。<br>
+<b>交易时段会先确认</b>：09:30-11:30 / 13:00-15:00 之间抓到的当日行情不完整（成交量、涨跌停家数都偏小），会先弹确认框。跑完的数据下一次正常日更会覆盖修正。<br>
+<b>安全性</b>：接口只接受<b>内网来源</b>（按 TCP 对端地址判断，不信 Host 头），并要求带自定义请求头 <code>X-Astock-Update</code> —— 跨站请求带不上自定义头、带了又会触发 CORS 预检（本服务不应答预检），所以不用 token 也能挡住 CSRF。<br>
+<b>并发保护</b>：日更有单实例锁。若 15:40 的计划任务正在跑，再按按钮会被拒绝，界面提示「主机上已经有一次日更在跑」，不会两个日更同时改同一批文件。`,
   },
   ztdt: {
     title: '涨停 / 跌停家数',
@@ -747,6 +751,7 @@ const themeJs = readFileSync('theme.js', 'utf8');
 const pwaJs = readFileSync('pwa.js', 'utf8');
 const rollerJs = readFileSync('date-roller.js', 'utf8');
 const updateJs = readFileSync('update-button.js', 'utf8'); // 右下角「更新」按钮（局域网内可用）
+const autosyncJs = readFileSync('autosync.js', 'utf8'); // 发现服务端有新版本时自动刷新
 const touchJs = readFileSync('touch.js', 'utf8');
 const sentChartJs = readFileSync('sentiment-chart.js', 'utf8'); // 恐慌情绪散点图（面板左下方）
 // 实时信号接口地址：留空 = 用同源 /signal（本机 serve-dashboard.mjs）；
@@ -950,6 +955,16 @@ h1{margin-right:96px}
 .updpanel .u-log{max-height:120px;overflow:auto;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);
   font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:10px;white-space:pre-wrap;word-break:break-all;color:var(--dim)}
 html[data-theme="light"] .updpanel code{background:#e8edf6;color:#1d4ed8}
+/* 自动同步提示：服务端有新版本时短暂出现，随即刷新页面 */
+.synctoast{position:fixed;left:50%;top:14px;transform:translateX(-50%) translateY(-14px);z-index:40;
+  display:flex;flex-direction:column;gap:2px;align-items:center;
+  background:var(--card);border:1px solid #5b8def;color:var(--fg);border-radius:10px;
+  padding:9px 16px;font-size:12px;box-shadow:0 6px 22px rgba(0,0,0,.45);
+  opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
+.synctoast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.synctoast span{color:var(--dim);font-size:11px}
+.synctoast .synclink{color:#5b8def;cursor:pointer;text-decoration:underline}
+html[data-theme="light"] .synctoast .synclink{color:#1d4ed8}
 
 /* ==================== 顶部日期滚轮 ==================== */
 .rollerbar{display:flex;align-items:stretch;gap:6px;margin:0 0 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 6px}
@@ -1154,6 +1169,7 @@ ${statePanel}
 <script>window.PDESC = ${JSON.stringify(PDESC)};</script>
 <script>window.SIGNAL_URL = ${JSON.stringify(SIGNAL_URL)};</script>
 <script>window.PUSHLOG = ${JSON.stringify(PUSHLOG)};</script>
+<script>window.BUILD_STAMP = ${JSON.stringify(BUILD_STAMP)};</script>
 <script>${rollerJs}</script>
 <script>${signalJs}</script>
 <script>${themeJs}</script>
@@ -1161,10 +1177,17 @@ ${statePanel}
 <script>${panelsJs}</script>
 <script>${sentChartJs}</script>
 <script>${updateJs}</script>
+<script>${autosyncJs}</script>
 </body></html>`;
 
 writeFileSync('astock-dashboard.html', html, 'utf8');
 console.log('wrote astock-dashboard.html');
+// version.json：极小的版本标记，供手机端轮询。
+// 为什么不直接轮询 index.html：那是 575 KB，每 60 秒拉一次纯属浪费流量。
+// 为什么要单独一个文件而不是读响应头：GitHub Pages 不保证给 ETag/Last-Modified，
+// 而且 Service Worker 会缓存同源 GET —— 所以 sw.js 里把 version.json 排除在缓存之外。
+writeFileSync('version.json', JSON.stringify({ generatedAt: BUILD_STAMP, date: last.date, bytes: html.length }), 'utf8');
+console.log('wrote version.json（' + BUILD_STAMP + '）');
 console.log(
   `区间 ${tr.days[0]} ~ ${tr.days.at(-1)}（${tr.days.length} 日）:`,
   plotted.map((s) => `${s.name} ${s.total >= 0 ? '+' : ''}${s.total.toFixed(2)}%`).join('  '),
