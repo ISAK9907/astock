@@ -185,8 +185,11 @@ function updateStatus() {
   const done = stepLines.length;
   const failedSteps = stepLines.filter((l) => /^  ✗ /.test(l)).length;
   const last = tail.filter((l) => l.trim()).at(-1) ?? '';
+  // 退出码 3 = daily-update.mjs 的单实例锁挡住（多半是 15:40 的计划任务正在跑）。
+  // 这不是失败，要单独成一种状态，否则界面上会显示「更新失败」把人吓一跳。
+  const blocked = j?.endedAt && j.code === 3;
   return {
-    state: !j ? 'idle' : j.endedAt ? (j.code === 0 ? 'done' : 'failed') : 'running',
+    state: !j ? 'idle' : !j.endedAt ? 'running' : blocked ? 'busy-elsewhere' : j.code === 0 ? 'done' : 'failed',
     startedAt: j?.startedAt ?? null,
     endedAt: j?.endedAt ?? null,
     elapsedMs: j ? (j.endedAt ?? Date.now()) - j.startedAt : 0,

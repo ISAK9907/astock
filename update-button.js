@@ -112,6 +112,16 @@
       }
       return;
     }
+    if (s.state === 'busy-elsewhere') {
+      setState('', '主机在忙');
+      show(
+        '<div class="u-h">主机上已经有一次日更在跑</div>' +
+          '多半是每日 15:40 的自动更新正在执行。日更做了单实例保护，不会两个同时改数据。<br>' +
+          '<span class="u-dim">等它跑完（通常 1~2 分钟）再按一次即可。</span>',
+        renderLog(s.tail),
+      );
+      return;
+    }
     if (s.state === 'failed') {
       setState('err', '更新失败');
       show(

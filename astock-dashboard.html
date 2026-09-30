@@ -310,7 +310,7 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
   <svg class="upd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
   <span id="updLabel">更新</span>
 </button>
-<div class="sub">数据截至 2026-09-29 收盘 · 生成于 2026/9/30 13:34:34</div>
+<div class="sub">数据截至 2026-09-29 收盘 · 生成于 2026/9/30 13:38:26</div>
 <div class="kpis"><div class="kpi"><div class="l">涨停家数</div><div class="v"><span class="up">57</span></div><div class="d">较前日 <span class="up">+24</span></div></div><div class="kpi"><div class="l">跌停家数</div><div class="v"><span class="down">10</span></div><div class="d">较前日 <span class="down">-46</span></div></div><div class="kpi"><div class="l">两市成交额</div><div class="v">1.41<span class="u">万亿</span></div><div class="d">较前日 <span class="down">-2936</span> 亿</div></div><div class="kpi"><div class="l">上证指数</div><div class="v">3830.45</div><div class="d">较前日 <span class="up">+6.83</span></div></div></div>
 
 <div class="panel" data-panel="signal"><div class="phead"><h2>明日开盘应对<span class="hint">T 日状态 × T+1 集合竞价跳空 · 开盘后自动更新</span></h2>
@@ -3055,6 +3055,16 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
         reloading = true;
         setTimeout(() => location.reload(), 1200);
       }
+      return;
+    }
+    if (s.state === 'busy-elsewhere') {
+      setState('', '主机在忙');
+      show(
+        '<div class="u-h">主机上已经有一次日更在跑</div>' +
+          '多半是每日 15:40 的自动更新正在执行。日更做了单实例保护，不会两个同时改数据。<br>' +
+          '<span class="u-dim">等它跑完（通常 1~2 分钟）再按一次即可。</span>',
+        renderLog(s.tail),
+      );
       return;
     }
     if (s.state === 'failed') {
