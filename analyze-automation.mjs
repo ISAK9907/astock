@@ -45,6 +45,23 @@ function tradingDaysBetween(fromIso, toIso) {
   return n;
 }
 
+/**
+ * 结构化运行记录 runs.jsonl（由启动器调用 record-run.mjs 写入）。
+ * 为什么不从日志里推断：启动器把 node 的 stdout 重定向到 daily-update.log，而
+ * daily-update.mjs 又把汇总行 append 进同一个文件 —— 两个写者互相踩，
+ * **计划任务的汇总行会被覆盖掉**（2026-10-05/06/07 三次都是完整跑完却查不到汇总行）。
+ * 所以「这次是谁触发的、退出码多少」必须由启动器直接记下来，不能靠解析日志。
+ */
+function readRuns() {
+  if (!existsSync('runs.jsonl')) return [];
+  const out = [];
+  for (const l of readFileSync('runs.jsonl', 'utf8').split(/\r?\n/)) {
+    if (!l.trim()) continue;
+    try { out.push(JSON.parse(l)); } catch { /* 跳过坏行 */ }
+  }
+  return out;
+}
+
 /** 从日志里找最后一条带 ISO 时间戳的记录 */
 function lastStamp(file) {
   if (!existsSync(file)) return null;
@@ -63,6 +80,7 @@ function lastStamp(file) {
       date: iso(bj),
       failed: /:FAIL|✗/.test(m[2]),
       text: m[2].slice(0, 160),
+      rawLine: lines[i], // lastWasScheduled 要靠它定位
     };
   }
   return null;
@@ -102,37 +120,75 @@ function lastAttempt(file, okRe) {
   };
 }
 
+/**
+ * 最后一次成功是「计划任务跑出来的」还是「手动跑的」？
+ * 为什么必须区分：手动补跑一次之后，「最后成功时间」马上变新，状态带就会显示正常 ——
+ * 而计划任务其实还是坏的。这正是最容易自欺的地方。
+ * 判据：日更/盘前的启动器会在 node 跑完后紧接着写一行 `attempt N OK` / `] OK`。
+ * 所以「最后一条汇总行之后还有 OK 行」= 计划任务跑的；没有 = 手动跑的。
+ */
+function lastWasScheduled(file, sumLine, okRe) {
+  if (!existsSync(file)) return null;
+  const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+  const idx = lines.lastIndexOf(sumLine);
+  if (idx < 0) return null;
+  // 看汇总行之后的 6 行内有没有启动器写的 OK 标记
+  return lines.slice(idx + 1, idx + 7).some((l) => okRe.test(l));
+}
+
 const todayIso = iso(now);
 const mins = now.getHours() * 60 + now.getMinutes();
 const nowTrading = isTradingDay(todayIso);
+const runs = readRuns();
 
 // 日更 15:40 跑；15:30 之前「今天该不该有数据」要算到上一个交易日
 const dailyExpected = nowTrading && mins >= 15 * 60 + 30 ? todayIso : lastTradingDayOnOrBefore(iso(new Date(now.getTime() - 864e5)));
 // 盘前 09:26 跑；09:30 之前算到上一个交易日
 const preExpected = nowTrading && mins >= 9 * 60 + 30 ? todayIso : lastTradingDayOnOrBefore(iso(new Date(now.getTime() - 864e5)));
 
-function health(file, expected, schedule, label, okRe) {
+function health(file, expected, schedule, label, okRe, kind, runs) {
   const last = lastStamp(file);
-  const attempt = lastAttempt(file, okRe);
-  if (!last && !attempt) {
+  const myRuns = runs.filter((r) => r.kind === kind);
+  const lastRecord = myRuns.at(-1) ?? null;
+  const lastScheduledOk = [...myRuns].reverse().find((r) => r.source === 'scheduled' && r.ok) ?? null;
+  const lastManualOk = [...myRuns].reverse().find((r) => r.source !== 'scheduled' && r.ok) ?? null;
+  if (!last && !myRuns.length) {
     return { label, schedule, available: false, note: existsSync(file) ? '日志里还没有成功记录' : '本机日志不可用（云端构建时读不到）' };
   }
-  const lastDate = last?.date ?? null;
-  const behind = lastDate && lastDate < expected ? tradingDaysBetween(lastDate, expected) : lastDate ? 0 : null;
-  const att = attempt
-    ? { startedAt: attempt.startedAt, finished: attempt.finished, failed: attempt.failed, interrupted: attempt.interrupted, evidence: attempt.evidence }
+  // 「数据是否新鲜」看任意来源的最后成功；「自动化是否健康」只看计划任务的最后成功
+  const bj = (isoStr) => {
+    const d = new Date(isoStr);
+    return `${iso(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const freshAt = lastRecord?.ok ? bj(lastRecord.at) : (last?.bj ?? null);
+  const freshDate = lastRecord?.ok ? iso(new Date(lastRecord.at)) : (last?.date ?? null);
+  const behind = freshDate && freshDate < expected ? tradingDaysBetween(freshDate, expected) : freshDate ? 0 : null;
+
+  // 计划任务维度：最后一次「计划任务触发的成功」是否已经不落后了
+  const schDate = lastScheduledOk ? iso(new Date(lastScheduledOk.at)) : null;
+  const schBehind = schDate && schDate < expected ? tradingDaysBetween(schDate, expected) : schDate ? 0 : null;
+
+  // 关键判断：数据是新的，但新数据来自手动补跑 → 计划任务仍然是坏的
+  const manualOnly = !lastScheduledOk || (lastRecord?.ok && lastRecord.source !== 'scheduled');
+
+  const att = lastRecord
+    ? { startedAt: bj(lastRecord.at), finished: true, failed: !lastRecord.ok, interrupted: false, evidence: `rc=${lastRecord.rc} source=${lastRecord.source}` }
     : null;
-  // ⚠️ 「被打断」要单独算不健康：它不写汇总行，所以 lastOk 会停在更早一次而看着正常
-  const ok = behind === 0 && !att?.interrupted;
+
+  const ok = behind === 0 && !manualOnly;
   return {
     label,
     schedule,
     available: true,
-    lastOk: last?.bj ?? null,
-    lastDate,
-    lastFailed: last?.failed ?? false,
+    lastOk: freshAt,
+    lastDate: freshDate,
     expected,
     behind: behind ?? 0,
+    lastScheduledOk: lastScheduledOk ? bj(lastScheduledOk.at) : null,
+    lastScheduledBehind: schBehind,
+    lastManualOk: lastManualOk ? bj(lastManualOk.at) : null,
+    lastRecord,
+    manualOnly,
     lastAttempt: att,
     ok,
     note: last?.text ?? '',
@@ -143,17 +199,21 @@ const out = {
   generatedAt: now.toISOString(),
   now: `${todayIso} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
   isTradingDay: nowTrading,
-  daily: health('daily-update.log', dailyExpected, '工作日 15:40（本机）', '盘后日更', /attempt \d+ OK/),
-  premarket: health('premarket.log', preExpected, '工作日 09:26（本机）', '盘前更新', /\] OK\b/),
+  daily: health('daily-update.log', dailyExpected, '工作日 15:40（本机）', '盘后日更', /attempt \d+ OK/, 'daily', runs),
+  premarket: health('premarket.log', preExpected, '工作日 09:26（本机）', '盘前更新', /\] OK\b/, 'premarket', runs),
   cloud: { label: '云端兜底', schedule: '工作日 15:50（GitHub Actions）', note: '本机没跑成时由它接手' },
 };
 writeFileSync('automation.json', JSON.stringify(out, null, 1), 'utf8');
 
 const line = (h) => {
   if (!h.available) return `${h.label}: ${h.note}`;
-  const w = h.behind > 0 ? `⚠️ 落后 ${h.behind} 个交易日` : h.lastAttempt?.interrupted ? '⚠️ 上次尝试被中断' : '✓ 正常';
-  const att = h.lastAttempt?.interrupted ? `  最后一次尝试 ${h.lastAttempt.startedAt} 未跑完` : '';
-  return `${h.label}: 最后成功 ${h.lastOk ?? '（无）'}  ${w}  （${h.schedule}）${att}`;
+  const w =
+    h.behind > 0
+      ? `⚠️ 数据落后 ${h.behind} 个交易日`
+      : h.manualOnly
+        ? `⚠️ 数据是新的，但来自手动补跑；计划任务最后一次成功 ${h.lastScheduledOk ?? '（没有记录）'}`
+        : '✓ 正常';
+  return `${h.label}: 最后成功 ${h.lastOk ?? '（无）'}  ${w}  （${h.schedule}）`;
 };
 console.log(`自动化健康度（当前 ${out.now}${nowTrading ? '，交易日' : '，非交易日'}）`);
 console.log('  ' + line(out.daily));

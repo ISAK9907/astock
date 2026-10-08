@@ -443,10 +443,15 @@ const autoHtml = !AUTOMATION
       const chips = items
         .map((h) => {
           const bad = !h.ok;
-          const why = h.behind > 0 ? `落后 ${h.behind} 个交易日` : h.lastAttempt?.interrupted ? '上次尝试被中断' : '正常';
+          const why =
+            h.behind > 0
+              ? `数据落后 ${h.behind} 个交易日`
+              : h.manualOnly
+                ? '数据靠手动补跑，计划任务未生效'
+                : '正常';
           const color = bad ? '#f59e0b' : '#43d19a';
           return (
-            `<span class="autochip" style="border-color:${color}">` +
+            `<span class="autochip" style="border-color:${color}" title="${esc(`计划任务最后一次成功：${h.lastScheduledOk ?? '没有记录'}`)}">` +
             `<i style="background:${color}"></i><b>${esc(h.label)}</b>` +
             `<span style="color:${color}">${bad ? '⚠️' : '✓'} ${why}</span>` +
             `<em>最后成功 ${esc(h.lastOk ?? '无记录')}</em></span>`
@@ -860,13 +865,22 @@ z≥2 时四家的日内回落率是 83~100%、平均日内 −2.0~−2.8%；而
 &nbsp;&nbsp;· <b>盘后日更</b> —— 本机计划任务，工作日 15:40，跑完整流水线并发布；<br>
 &nbsp;&nbsp;· <b>盘前更新</b> —— 本机计划任务，工作日 09:26，抓隔夜美股 + 亚洲早盘 + 集合竞价，然后重建并发布。<br>
 两者都有<b>云端兜底</b>（GitHub Actions）：本机没跑成时，云端在 10:30 / 15:50 接手。云端靠 <code>version.json</code> 判断本机是否已经跑过 ——
-所以「本机跑成了 → 云端跳过；本机没跑成 → 云端接手」。<br>
-<b>⚠️ 三个已知的坑（都踩过）</b>：<br>
-&nbsp;&nbsp;① <b>任务触发了但跑到一半被杀</b>：日志里会看到 <code>exit=3221225786</code>（= <code>0xC000013A</code>，控制台被中断）和 <code>^C</code>。
-这种运行<b>不写汇总行</b>，所以「最后成功时间」会停在前一次，看起来像正常 —— 状态带专门检测了这种情况并标「上次尝试被中断」。<br>
-&nbsp;&nbsp;② <b>盘前任务的调度引擎与日更不同</b>（<code>UseUnifiedSchedulingEngine=false</code>，旧引擎），会忽略「错过就尽快补跑」。任务定义在 <code>C:\\Windows\\System32\\Tasks\\</code> 下可直接查看；本程序改不了任务，需要重注册请跑 <code>install-tasks.cmd</code>。<br>
-&nbsp;&nbsp;③ <b>盘前启动器曾因 UTF-8 中文被 cmd 在多字节边界切断</b>而报错，现已改为纯 ASCII。详见 <code>run-premarket.cmd</code> 头部注释。<br>
-<b>本页由云端构建时</b>，本机日志（<code>*.log</code> 被 gitignore 排除）读不到，状态带会明确说明「无法判断」，而不是假装正常。`,
+「本机跑成了 → 云端跳过；本机没跑成 → 云端接手」。<br>
+<b>怎么判断「自动化是否健康」</b>：看 <code>runs.jsonl</code> —— 由启动器调用 <code>record-run.mjs</code> 写入的结构化记录，
+每条都带<b>是谁触发的（scheduled / manual）和退出码</b>。<br>
+<span style="color:var(--dim)">为什么不解析日志：启动器把 node 的 stdout 重定向到 <code>daily-update.log</code>，而 <code>daily-update.mjs</code> 又把汇总行 append 进<b>同一个文件</b>，
+两个写者互相踩 —— <b>计划任务的汇总行会被覆盖掉</b>（2026-10-05/06/07 三次都是完整跑完、提交了备份，却查不到汇总行）。
+所以「这次是谁触发的、成功没有」必须由启动器直接记，不能靠解析日志。</span><br>
+<b>两种异常会分别标出</b>：① 数据落后 N 个交易日；② <b>数据是新的、但来自手动补跑</b> —— 后者最容易自欺：
+手动补一次状态带就变绿，而计划任务其实还没修好。<br>
+<b>⚠️ 已知的坑（都踩过）</b>：<br>
+&nbsp;&nbsp;① 盘前任务的调度引擎与日更不同（<code>UseUnifiedSchedulingEngine=false</code>，旧引擎），实测从未触发。任务定义在
+<code>C:\\Windows\\System32\\Tasks\\</code> 下可直接查看；本程序改不了任务，重注册请跑 <code>install-tasks.ps1</code>。<br>
+&nbsp;&nbsp;② <b>.cmd/.ps1 里带中文必须加 BOM 或改成纯 ASCII</b>：Windows PowerShell 5.1 读无 BOM 的 UTF-8 会按 GBK 解码，
+而 GBK 双字节误解码会吞掉引号导致语法错误（报错位置完全指不到真因）；cmd 在 <code>chcp 65001</code> 下还会把 UTF-8 行在多字节边界切断当命令执行。
+<code>backup.mjs</code> 已加防线，含非 ASCII 却无 BOM 的脚本会被拒绝提交。<br>
+&nbsp;&nbsp;③ <b>本页由云端构建时</b>，本机日志与 <code>runs.jsonl</code> 都读不到（<code>*.log</code> / <code>runs.jsonl</code> 被 gitignore 排除），
+状态带会明确说明「无法判断」，而不是假装正常。`,
   },
   update: {
     title: '自动同步 / 右下角「更新」按钮',    html: `<b>自动同步（不用操作）</b>：页面每隔约 60 秒问一次服务端「版本变了没」，变了就弹一下提示然后自动刷新。从后台切回前台时也会立刻查一次 —— 掏出手机那一刻最希望看到最新数据。<br>

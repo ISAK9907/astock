@@ -18,6 +18,11 @@ rem ============================================================================
 cd /d "C:\Users\12452\Desktop\deepseek"
 set NODE="C:\Program Files\nodejs\node.exe"
 set LOG=daily-update.log
+rem Mark this run as scheduled so record-run.mjs can tell it apart from a manual run.
+rem Needed because the summary line daily-update.mjs appends to daily-update.log gets
+rem clobbered by this script's own stdout redirection into that same file -- so the log
+rem alone cannot say whether the scheduled task actually succeeded.
+set DSH_RUN_SOURCE=scheduled
 
 echo. >> %LOG%
 echo ===== %date% %time% scheduled run ===== >> %LOG%
@@ -29,6 +34,7 @@ set /a ATTEMPT=0
 set /a ATTEMPT+=1
 %NODE% daily-update.mjs >> %LOG% 2>&1
 set RC=%ERRORLEVEL%
+%NODE% record-run.mjs daily %RC% >> %LOG% 2>&1
 
 if %RC%==0 goto ok
 rem RC=3 means the single-instance lock refused us: another daily run is in progress.

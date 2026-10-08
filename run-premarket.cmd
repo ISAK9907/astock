@@ -25,6 +25,8 @@ rem Tell build-dashboard this is the morning build. The cloud gate needs to tell
 rem them apart: otherwise a 09:26 premarket build would make the 15:50 cloud daily
 rem run think "already updated today" and skip, so the close data would never land.
 set BUILD_KIND=premarket
+rem Mark this run as scheduled so record-run.mjs can tell it apart from a manual run.
+set DSH_RUN_SOURCE=scheduled
 
 echo. >> %LOG%
 echo ===== %date% %time% scheduled run ===== >> %LOG%
@@ -32,6 +34,7 @@ echo ===== %date% %time% scheduled run ===== >> %LOG%
 rem premarket.mjs writes premarket.json and appends to push-archive.json.
 %NODE% premarket.mjs >> %LOG% 2>&1
 set RC=%ERRORLEVEL%
+%NODE% record-run.mjs premarket %RC% >> %LOG% 2>&1
 if not %RC%==0 goto failed
 
 rem Rebuild so the morning push shows up on the dashboard the same morning
@@ -42,6 +45,7 @@ if not %RC%==0 goto failed
 
 %NODE% deploy-pages.mjs >> %LOG% 2>&1
 set RC=%ERRORLEVEL%
+%NODE% record-run.mjs premarket %RC% >> %LOG% 2>&1
 if not %RC%==0 goto failed
 
 echo [%date% %time%] OK >> %LOG%
