@@ -41,18 +41,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 检查本机今天是否已经跑过
+      - name: 检查本机今天是否已经跑过「日更」
         id: fresh
         run: |
-          stamp=$(grep -o '"generatedAt":"[^"]*"' index.html 2>/dev/null | head -1 | cut -d'"' -f4)
+          # 看 version.json 而不是 index.html：需要同时知道「什么时候构建的」和
+          # 「这是盘前构建还是盘后日更构建」。只看日期的话，早上 09:26 的盘前构建
+          # 会让这次日更误判成「今天已经更过了」而跳过 —— 当天收盘数据就永远进不来。
+          stamp=$(grep -o '"generatedAt":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
+          kind=$(grep -o '"kind":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
           d_bj=$(date +%F); d_utc=$(date -u +%F)
-          echo "index.html generatedAt = ${stamp:-（读取失败）}   今天(北京)=$d_bj  今天(UTC)=$d_utc  force=${{ inputs.force }}"
+          echo "version.json generatedAt=${stamp:-（读取失败）} kind=${kind:-（无）}  今天(北京)=$d_bj 今天(UTC)=$d_utc  force=${{ inputs.force }}"
           if [ '${{ inputs.force }}' = 'true' ]; then
             echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 手动指定 force，照常在云端运行'
-          elif [ -n "$stamp" ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
-            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天已经生成过看板，云端跳过（本机为主）'
+          elif [ "$kind" = 'daily' ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天的日更已经跑过，云端跳过（本机为主）'
           else
-            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 本机今天没跑，云端接手（兜底）'
+            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo "→ 本机今天还没跑日更（kind=${kind:-无}），云端接手（兜底）"
           fi
 
       - uses: actions/setup-node@v4

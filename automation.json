@@ -1,0 +1,42 @@
+{
+ "generatedAt": "2026-10-08T04:55:33.823Z",
+ "now": "2026-10-08 12:55",
+ "isTradingDay": true,
+ "daily": {
+  "label": "盘后日更",
+  "schedule": "工作日 15:40（本机）",
+  "available": true,
+  "lastOk": "2026-09-30 23:29",
+  "lastDate": "2026-09-30",
+  "lastFailed": false,
+  "expected": "2026-09-30",
+  "behind": 0,
+  "lastAttempt": {
+   "startedAt": "周三 2026/10/07 20:52:33.69",
+   "finished": true,
+   "failed": false,
+   "interrupted": false,
+   "evidence": ""
+  },
+  "ok": true,
+  "note": "45日5分钟线:ok 事件日历:ok 日线数据:ok 涨跌停/成交额:ok 长历史日线:ok 跌停三维:ok 情绪/回测:ok 统计重算:ok 开盘情景:ok 盘中跌停曲线:ok 全球市场日线:ok 生成看板:ok 推送手机:ok 历史备份:ok"
+ },
+ "premarket": {
+  "label": "盘前更新",
+  "schedule": "工作日 09:26（本机）",
+  "available": true,
+  "lastOk": "2026-09-24 12:20",
+  "lastDate": "2026-09-24",
+  "lastFailed": false,
+  "expected": "2026-10-08",
+  "behind": 4,
+  "lastAttempt": null,
+  "ok": false,
+  "note": "(--no-push) 跳过推送"
+ },
+ "cloud": {
+  "label": "云端兜底",
+  "schedule": "工作日 15:50（GitHub Actions）",
+  "note": "本机没跑成时由它接手"
+ }
+}

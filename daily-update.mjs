@@ -64,6 +64,10 @@ const steps = [
   ['统计重算', 'analyze-dt.mjs'],
   // 开盘跳空情景统计：只依赖 daily-long，排在它之后、生成看板之前即可
   ['开盘情景', 'analyze-open-scenario.mjs'],
+  // 自动化健康度：读本机日志判断两个定时任务是否落后/被中断。
+  // 必须排在生成看板之前（看板顶部那条状态带要用它）。
+  // 注意它读的本步日志里还没有「本次运行」的记录 —— 显示的是上一次的状态，这是有意的。
+  ['自动化健康', 'analyze-automation.mjs'],
   ['盘中跌停曲线', 'fetch-dt-intraday.mjs'],
   ['全球市场日线', 'fetch-global.mjs'],
   ['生成看板', 'build-dashboard.mjs'],

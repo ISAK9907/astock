@@ -18,10 +18,24 @@ const SCENARIO = (() => {
     return null;
   }
 })();
+// 自动化健康度（analyze-automation.mjs 生成）。同样必须早于任何使用它的模板拼接。
+// 它读的是本机日志，而 *.log 被 .gitignore 排除 —— 云端构建时读不到，
+// 那时面板会明确说明「本页由云端构建」，而不是假装一切正常。
+const AUTOMATION = (() => {
+  try {
+    return JSON.parse(readFileSync('automation.json', 'utf8'));
+  } catch {
+    return null;
+  }
+})();
 const NOW = new Date();
 // 本次构建的唯一标记，写进页面也写进 version.json。
 // 手机端拿页面里这个值和 version.json 里的比 —— 不一致说明服务端已经有新版本了。
 const BUILD_STAMP = NOW.toISOString();
+// 这次构建是「盘后日更」还是「盘前更新」。云端要靠它判断该不该接手：
+//   · 只看「generatedAt 是不是今天」的话，早上 09:26 的盘前构建会让下午 15:50 的
+//     云端日更误以为「今天已经更过了」而跳过 —— 那当天收盘数据就永远不会被更新。
+const BUILD_KIND = process.env.BUILD_KIND === 'premarket' ? 'premarket' : 'daily';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const days = (d) => {
@@ -110,7 +124,28 @@ try {
       : `${days(from)} 个自然日后休市 · 共 ${Math.max(1, days(reopen) - days(from))} 天`;
     e.days = inHol ? 0 : days(from);
   }
-  HOL = { next: nh, list: ups };
+  // ⚠️ 官方日历只到 2026 年底（2027 年的通常在前一年 12 月公布）。
+  //    一旦今天越过了当年的最后一个假期，`ups` 就会变空、`nextHoliday` 返回 null，
+  //    看板上的「下一个休市」倒计时会**无声消失** —— 2026-10-08（国庆最后一天）之后就是这种情况。
+  //    这里补一张说明卡片，免得用户以为功能坏了。
+  if (!ups.length) {
+    EVENTS.push({
+      name: '2027 年休市安排待公布',
+      kind: '休市',
+      date: `${NOW.getFullYear() + 1}-01-01`,
+      endDate: `${NOW.getFullYear() + 1}-01-01`,
+      span: `官方日历已到 ${NOW.getFullYear()} 年底`,
+      note: `上交所通常在当年 12 月公布次年安排；公布后补进 holidays.mjs 的 OFFICIAL 即可`,
+      source: '上交所休市安排',
+      src: 'official',
+      days: days(`${NOW.getFullYear() + 1}-01-01`),
+      endDays: days(`${NOW.getFullYear() + 1}-01-01`),
+      placeholder: true,
+    });
+    EVENTS.sort((a, b) => a.days - b.days);
+    console.log(`  注：${NOW.getFullYear()} 年官方休市安排已全部结束，已补「次年安排待公布」占位卡片`);
+  }
+  HOL = { next: nh, list: ups, exhausted: !ups.length };
 } catch (err) {
   console.log(`! holidays.mjs 加载失败，休市面板将为空: ${err.message}`);
 }
@@ -393,6 +428,36 @@ const sigReviewHtml = !sigReview
         最近 ${sigReview.sinceLast} 个交易日未触发；最近 5 次触发累计 <b style="color:${col(sum)}">${pctc(sum)}</b>，
         命中 <b>${win}/${hit.length}</b>（样本极少，只作口径核对，不构成任何操作依据）。
       </div>`;
+    })();
+
+// 自动化健康度：一条紧凑的状态带，放在最上面。
+// 目的很具体：2026-09-24 起盘前更新任务就再没成功运行过，而看板、日志、任务状态
+// 全都没有任何提示 —— 过了 14 天只有主动翻日志才发现。静默失败必须变成可见的。
+const autoHtml = !AUTOMATION
+  ? ''
+  : (() => {
+      const items = [AUTOMATION.daily, AUTOMATION.premarket].filter((h) => h && h.available);
+      if (!items.length) {
+        return `<div class="autostrip dim"><b>自动化</b> 本机运行日志不可用（本页由云端构建），无法判断定时任务状态</div>`;
+      }
+      const chips = items
+        .map((h) => {
+          const bad = !h.ok;
+          const why = h.behind > 0 ? `落后 ${h.behind} 个交易日` : h.lastAttempt?.interrupted ? '上次尝试被中断' : '正常';
+          const color = bad ? '#f59e0b' : '#43d19a';
+          return (
+            `<span class="autochip" style="border-color:${color}">` +
+            `<i style="background:${color}"></i><b>${esc(h.label)}</b>` +
+            `<span style="color:${color}">${bad ? '⚠️' : '✓'} ${why}</span>` +
+            `<em>最后成功 ${esc(h.lastOk ?? '无记录')}</em></span>`
+          );
+        })
+        .join('');
+      const badCount = items.filter((h) => !h.ok).length;
+      const head = badCount
+        ? `<b style="color:#f59e0b">自动化有 ${badCount} 项异常</b>`
+        : `<b style="color:#43d19a">自动化正常</b>`;
+      return `<div class="autostrip">${head}${chips}<button class="pbtn" data-desc="automation" type="button">说明</button></div>`;
     })();
 
 const sigState = SIG.find((s) => s.key === 'sh') ?? SIG[0] ?? null;const sigPanelHtml = !sigState
@@ -786,6 +851,23 @@ z≥2 时四家的日内回落率是 83~100%、平均日内 −2.0~−2.8%；而
 <b>用途定位</b>：判断某个开盘是否属于「历史上容易被回补」的情形，从而避免在极端高开时追高；
 以及认识到低开后日内偏反弹。<b>它是背景参考，不是预测，也不构成投资建议。</b>`,
   },
+  automation: {
+    title: '自动化状态',
+    html: `<b>顶部那条状态带是什么</b>：显示两个定时任务最后一次成功运行的时间，以及「按交易日历本该跑几次、实际差了几次」。<br>
+<b>为什么要做这个</b>：2026-09-24 之后盘前更新任务就再没成功运行过（14 天），而看板、日志、任务状态<b>全都没有任何提示</b> ——
+只有主动去翻日志才会发现。静默失败比失败本身更危险，所以把状态直接摆在最上面。<br>
+<b>两个任务</b>：<br>
+&nbsp;&nbsp;· <b>盘后日更</b> —— 本机计划任务，工作日 15:40，跑完整流水线并发布；<br>
+&nbsp;&nbsp;· <b>盘前更新</b> —— 本机计划任务，工作日 09:26，抓隔夜美股 + 亚洲早盘 + 集合竞价，然后重建并发布。<br>
+两者都有<b>云端兜底</b>（GitHub Actions）：本机没跑成时，云端在 10:30 / 15:50 接手。云端靠 <code>version.json</code> 判断本机是否已经跑过 ——
+所以「本机跑成了 → 云端跳过；本机没跑成 → 云端接手」。<br>
+<b>⚠️ 三个已知的坑（都踩过）</b>：<br>
+&nbsp;&nbsp;① <b>任务触发了但跑到一半被杀</b>：日志里会看到 <code>exit=3221225786</code>（= <code>0xC000013A</code>，控制台被中断）和 <code>^C</code>。
+这种运行<b>不写汇总行</b>，所以「最后成功时间」会停在前一次，看起来像正常 —— 状态带专门检测了这种情况并标「上次尝试被中断」。<br>
+&nbsp;&nbsp;② <b>盘前任务的调度引擎与日更不同</b>（<code>UseUnifiedSchedulingEngine=false</code>，旧引擎），会忽略「错过就尽快补跑」。任务定义在 <code>C:\\Windows\\System32\\Tasks\\</code> 下可直接查看；本程序改不了任务，需要重注册请跑 <code>install-tasks.cmd</code>。<br>
+&nbsp;&nbsp;③ <b>盘前启动器曾因 UTF-8 中文被 cmd 在多字节边界切断</b>而报错，现已改为纯 ASCII。详见 <code>run-premarket.cmd</code> 头部注释。<br>
+<b>本页由云端构建时</b>，本机日志（<code>*.log</code> 被 gitignore 排除）读不到，状态带会明确说明「无法判断」，而不是假装正常。`,
+  },
   update: {
     title: '自动同步 / 右下角「更新」按钮',    html: `<b>自动同步（不用操作）</b>：页面每隔约 60 秒问一次服务端「版本变了没」，变了就弹一下提示然后自动刷新。从后台切回前台时也会立刻查一次 —— 掏出手机那一刻最希望看到最新数据。<br>
 每次构建都会写一份极小的 <code>version.json</code>（几百字节），页面拿自己内嵌的构建标记跟它比。<span class="u-dim">细节：请求带唯一 query 绕开 CDN 缓存；<code>sw.js</code> 里把 <code>version.json</code> 排除在 Service Worker 缓存之外 —— 否则轮询永远读到缓存里同一个值，这个功能会<b>静默失效</b>（不报错，只是永远不刷新）。离线时静默跳过，不打扰。</span><br>
@@ -1037,6 +1119,20 @@ html[data-theme="light"] .updpanel code{background:#e8edf6;color:#1d4ed8}
 .synctoast span{color:var(--dim);font-size:11px}
 .synctoast .synclink{color:#5b8def;cursor:pointer;text-decoration:underline}
 html[data-theme="light"] .synctoast .synclink{color:#1d4ed8}
+/* ==================== 自动化状态带 ==================== */
+.autostrip{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0 10px;
+  background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:11px}
+.autostrip.dim{color:var(--dim)}
+.autostrip .pbtn{margin-left:auto;padding:2px 9px;font-size:10px}
+.autochip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:14px;
+  padding:3px 9px;font-size:11px;white-space:nowrap}
+.autochip b{color:var(--fg);font-weight:600}
+.autochip em{color:var(--dim);font-style:normal}
+@media (max-width:560px){
+  .autostrip{gap:6px;padding:6px 8px}
+  .autochip{font-size:10px;padding:2px 7px}
+  .autochip em{display:none} /* 手机上先把「最后成功时间」收起来，异常状态优先 */
+}
 /* ==================== 开盘跳空情景参考 ==================== */
 .scen-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
 .scen-tabs .pbtn{padding:3px 10px;font-size:11px}
@@ -1179,6 +1275,7 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
   <span id="updLabel">更新</span>
 </button>
 <div class="sub">数据截至 ${last.date} 收盘 · 生成于 ${NOW.toLocaleString('zh-CN')}</div>
+${autoHtml}
 <div class="kpis">${kpis}</div>
 
 ${sigPanelHtml}
@@ -1271,8 +1368,8 @@ console.log('wrote astock-dashboard.html');
 // 为什么不直接轮询 index.html：那是 575 KB，每 60 秒拉一次纯属浪费流量。
 // 为什么要单独一个文件而不是读响应头：GitHub Pages 不保证给 ETag/Last-Modified，
 // 而且 Service Worker 会缓存同源 GET —— 所以 sw.js 里把 version.json 排除在缓存之外。
-writeFileSync('version.json', JSON.stringify({ generatedAt: BUILD_STAMP, date: last.date, bytes: html.length }), 'utf8');
-console.log('wrote version.json（' + BUILD_STAMP + '）');
+writeFileSync('version.json', JSON.stringify({ generatedAt: BUILD_STAMP, kind: BUILD_KIND, date: last.date, bytes: html.length }), 'utf8');
+console.log('wrote version.json（' + BUILD_STAMP + ' · ' + BUILD_KIND + '）');
 console.log(
   `区间 ${tr.days[0]} ~ ${tr.days.at(-1)}（${tr.days.length} 日）:`,
   plotted.map((s) => `${s.name} ${s.total >= 0 ? '+' : ''}${s.total.toFixed(2)}%`).join('  '),

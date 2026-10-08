@@ -1,24 +1,27 @@
-name: 盘前更新（手动 / 兜底）
+name: 盘前更新
 
-# 北京时间 09:26：拿隔夜美股 + 亚洲早盘（韩/日/台开盘）+ A 股集合竞价，
-# 更新「今日开盘应对」，并把这一条归档进 push-archive.json。
-# 归档之后必须重建看板，否则手机端的推送记录里看不到这一条。
+# 北京时间 10:30（本地 09:26 之后）：拿隔夜美股 + 亚洲早盘 + A 股集合竞价，
+# 更新「今日开盘应对」，重建看板并发布。
 #
-# ⚠️ 为什么默认**不排定时**：
-#   本机在 09:26 也跑 premarket.mjs（计划任务 DSH_Premarket），而且它是「本机为主」的那一路。
-#   云端没法判断本机跑没跑 —— 本机 premarket 只写 premarket.json，**不重建 index.html**，
-#   所以 daily.yml 用的那套「看 index.html 的 generatedAt 是不是今天」的探针在这里失效。
-#   两条路都跑就会互相覆盖 push-archive.json（各写各的副本），所以先设成手动：
-#   电脑没开机时，在手机上点一次 Actions → 盘前更新 → Run workflow 即可。
-#   要让它在电脑没开机时自动兜底，需要先让本机 premarket 也把 premarket.json 推到仓库里
-#   （有了那个标记，按 daily.yml 的写法加一个 freshness gate 就能自动判断）。
+# ⚠️ 为什么现在能自动兜底了：
+#   以前云端没法判断「本机 09:26 跑没跑」—— 本机 premarket 只写 premarket.json、
+#   不重建 index.html，所以没有任何仓库可见的标记。现在 run-premarket.cmd 会依次跑
+#   premarket.mjs → build-dashboard.mjs → deploy-pages.mjs，于是 version.json 会被刷新，
+#   云端就能像 daily.yml 那样用一个 gate 判断本机是否已经跑过。
+#
+# ⚠️ 排在 10:30 而不是 09:26：本机 09:26 先跑，云端错开 1 小时。
+#   本机跑成了 → version.json 是今天的 → 云端跳过。
+#   本机没跑成（任务没触发 / 跑到一半被杀）→ version.json 还停在昨天 → 云端接手。
 on:
+  schedule:
+    # 北京时间 10:30 = 02:30 UTC
+    - cron: '30 2 * * 1-5'
   workflow_dispatch:
     inputs:
       force:
-        description: '强制运行（目前默认就会运行，此项仅为将来加自动兜底时预留）'
+        description: '忽略「本机今天已经跑过」的检查，强制在云端跑一遍'
         type: boolean
-        default: true
+        default: false
 
 concurrency:
   group: astock-update
@@ -30,6 +33,7 @@ permissions:
 env:
   TZ: Asia/Shanghai
   PYTHONIOENCODING: utf-8
+  BUILD_KIND: premarket # 让 version.json 标明这次是盘前构建，别让下午的云端日更误判成已完成
 
 jobs:
   premarket:
@@ -38,12 +42,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 检查本机今天是否已经跑过盘前
+        id: fresh
+        run: |
+          stamp=$(grep -o '"generatedAt":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
+          kind=$(grep -o '"kind":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
+          d_bj=$(date +%F); d_utc=$(date -u +%F)
+          echo "version.json generatedAt=${stamp:-（读取失败）} kind=${kind:-（无）}  今天(北京)=$d_bj 今天(UTC)=$d_utc  force=${{ inputs.force }}"
+          if [ '${{ inputs.force }}' = 'true' ]; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 手动指定 force，照常在云端运行'
+          elif [ -n "$stamp" ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天已经构建过看板（盘前或日更），云端跳过'
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 本机今天没跑盘前，云端接手（兜底）'
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.fresh.outputs.fresh != 'true'
         with:
           node-version: '24'
 
       - name: 盘前更新 + 重建看板
         id: gen
+        if: steps.fresh.outputs.fresh != 'true'
         continue-on-error: true
         env:
           BARK_URL: ${{ secrets.BARK_URL }}
@@ -57,7 +78,7 @@ jobs:
           } 2>&1 | tee premarket-run.log
 
       - name: 提交并推送
-        if: always()
+        if: always() && steps.fresh.outputs.fresh != 'true'
         run: |
           git config user.name  'astock-bot'
           git config user.email 'astock-bot@users.noreply.github.com'
@@ -73,11 +94,14 @@ jobs:
         if: always()
         run: |
           {
-            echo "## 盘前更新（云端兜底）"
+            echo "## 盘前更新"
             echo ""
             echo "- 时间：$(date +'%Y-%m-%d %H:%M:%S %Z')"
-            echo "- 生成步骤：${{ steps.gen.outcome }}"
-            echo "- 注意：如果本机在 09:26 已经跑过，这次是重复的，仓库里的 push-archive.json 会以本次为准。"
+            if [ '${{ steps.fresh.outputs.fresh }}' = 'true' ]; then
+              echo "- **本机今天已经构建过看板，云端跳过**（本机为主、云端兜底）"
+            else
+              echo "- 生成步骤：${{ steps.gen.outcome }}"
+            fi
             echo ""
             if [ -f premarket-run.log ]; then
               echo '```'

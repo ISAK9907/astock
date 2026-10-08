@@ -92,6 +92,32 @@ if (suspects.length && !process.argv.includes('--allow-mojibake')) {
   process.exit(4);
 }
 
+// ---- BOM 防线（PowerShell / cmd 专用）----
+// Windows PowerShell 5.1 读取**无 BOM 的 UTF-8** 文件时按系统 ANSI 代码页（GBK）解码。
+// 后果不只是中文变乱码：GBK 是双字节编码，误解码会把后续字节（含引号和括号）一起吃掉，
+// 于是 .ps1 会直接语法错误，而且报出来的位置与真正的原因毫无关系
+// （实测报 "Unexpected token '}'"，真因却是中文注释被拆错字节）。
+// .cmd 同理（再加上 chcp 65001 下的多字节切行问题）。
+// 所以：这两个扩展名只要含非 ASCII，就必须带 UTF-8 BOM；只含 ASCII 则必须一个非 ASCII 都没有。
+const NEEDS_BOM = ['.ps1', '.cmd', '.bat'];
+const bomIssues = [];
+for (const f of files) {
+  if (!NEEDS_BOM.some((e) => f.endsWith(e))) continue;
+  let buf;
+  try { buf = readFileSync(f); } catch { continue; }
+  const hasBom = buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
+  const nonAscii = buf.some((b) => b > 127);
+  if (nonAscii && !hasBom) bomIssues.push({ f, why: '含非 ASCII 却没有 BOM，Windows PowerShell 5.1 会按 GBK 解码' });
+}
+if (bomIssues.length) {
+  console.error('\n✗ 检测到 PowerShell/cmd 脚本的编码隐患，拒绝提交：');
+  for (const s of bomIssues) console.error(`    ${s.f}  —— ${s.why}`);
+  console.error('\n  两种修法：');
+  console.error('    · 带中文的 .ps1：加 UTF-8 BOM ——  node add-bom.mjs <文件>');
+  console.error('    · .cmd/.bat：改成纯 ASCII（cmd 在 chcp 65001 下解析「多字节 + ( ) 块」会错乱，BOM 也救不了）');
+  process.exit(5);
+}
+
 const now = new Date();
 const pad = (n) => String(n).padStart(2, '0');
 const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
