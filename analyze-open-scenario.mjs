@@ -18,6 +18,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const L = JSON.parse(readFileSync('daily-long.json', 'utf8'));
 
+// ⚠️ 显式限定参与统计的指数，不要「daily-long 里有什么就统计什么」。
+//    daily-long 后来加进了中证2000（给恐慌情绪散点图叠加小盘股走势用），
+//    若这里跟随遍历，开盘情景面板会**在没人要求的情况下**从 4 个指数变成 5 个，
+//    连带说明里「几个指数方向一致」的说法也失真。
+const WHITELIST = ['sh', 'szcz', 'cyb', 'hs300'];
+const SERIES = Object.entries(L.series).filter(([k]) => WHITELIST.includes(k));
+
 // 分档：中间粗、顶部细 —— 顶部正是信号所在，要看清单调性
 const ZB = [
   { lo: -Infinity, hi: -2, label: '≤ −2', side: 'low' },
@@ -88,7 +95,7 @@ const agg = (rows, base) => {
 
 const out = { generatedAt: new Date().toISOString(), source: 'daily-long.json（东财日线，2010 起 4000 根）', zAxis: true, indices: {}, extremes: [] };
 
-for (const [key, s] of Object.entries(L.series)) {
+for (const [key, s] of SERIES) {
   const rows = buildSeries(s.bars);
   const base = agg(rows, null);
   const half = Math.floor(rows.length / 2);

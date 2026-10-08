@@ -46,5 +46,24 @@ if (m) {
   ok(cells.length === 6, `长假汇总行 6 项数值齐全: ${cells.join(' ')}`);
 } else { console.log('  ✗ 未找到长假汇总行'); fail++; }
 
+// 6. 产物是否比源文件新 —— 防「构建崩了但产物还是旧的，看着一切正常」
+//    这个坑踩过好几次：构建抛 ReferenceError（const 暂时性死区、或引用了不存在的变量），
+//    而我把构建输出用 Select-String 一过滤，报错就看不见了，于是继续部署旧产物。
+//    这里用时间戳兜底：看板必须比所有源文件都新。
+{
+  const { statSync } = await import('node:fs');
+  const srcs = [
+    'build-dashboard.mjs', 'sentiment-chart.js', 'scenario.js', 'update-button.js', 'autosync.js',
+    'market-data.json', 'dt-stats.json', 'sentiment.json', 'daily-long.json', 'open-scenario.json',
+    'automation.json', 'push-archive.json', 'holidays.mjs',
+  ];
+  const art = statSync('astock-dashboard.html').mtimeMs;
+  const newer = srcs
+    .filter((f) => { try { return statSync(f).mtimeMs > art + 1000; } catch { return false; } });
+  ok(newer.length === 0, newer.length === 0
+    ? '产物比所有源文件新（构建确实跑成功过）'
+    : `产物已过期！以下源文件比 astock-dashboard.html 新：${newer.join(', ')} —— 构建多半报错了，重跑 node build-dashboard.mjs 看完整输出`);
+}
+
 console.log(fail === 0 ? '\nSTATIC VERIFY: PASS' : `\nSTATIC VERIFY: FAIL (${fail})`);
 process.exit(fail === 0 ? 0 : 1);

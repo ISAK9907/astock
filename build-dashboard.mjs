@@ -595,6 +595,7 @@ const DT_TIERS = (dtStats?.tiers ?? [])
 // 乐观侧镜像档位（门槛 = 100 − 恐慌侧 sentLo，在 sentiment-map.mjs 里推导，不写死）。
 // 散点图右轴读乐观指数，低恐慌那端按这套冷色标出来。
 const DT_TIERS_OPT = tiersOpt().sort((a, b) => b.minOptimism - a.minOptimism);
+
 if (dtStats?.tiers?.length) {
   console.log(
     `跌停标注: 覆盖 ${Object.keys(dtDaily).length} 个交易日，分档 ` +
@@ -619,6 +620,73 @@ try {
 } catch {
   console.warn('警告: sentiment.json 不存在，情绪面板将省略');
 }
+
+// 恐慌情绪散点图上叠加的指数线（上证 / 中证2000）。
+// ⚠️ 必须是**顶层 const**，不能内联写在 <script> 字符串里 —— 面板 HTML 也要用它算结论行，
+//    内联时它根本不是一个变量，引用会直接 ReferenceError 让整个构建崩掉（踩过两次同类的坑）。
+const SENTIDX = (() => {
+  // 只取「有情绪分的那些交易日」，日期按 ISO 字典序排 —— 与散点图内部的排序一致，
+  // 前端就能按下标对齐，不必再查表。取不到的日期留 null。
+  const days = Object.keys(dtDaily)
+    .filter((d) => senti?.daily?.[d]?.sent != null)
+    .sort();
+  if (!days.length) return null;
+  const pick = (key) => {
+    const bars = LONG?.series?.[key]?.bars;
+    if (!bars) return null;
+    const m = new Map(bars.map((b) => [b.d, b.c]));
+    if (!days.some((d) => m.has(d))) return null;
+    return days.map((d) => m.get(d) ?? null);
+  };
+  const sh = pick('sh');
+  const csi2000 = pick('csi2000');
+  if (!sh && !csi2000) {
+    console.log('  ! 散点图的指数叠加线：daily-long.json 里既没有 sh 也没有 csi2000，本图不叠加');
+    return null;
+  }
+  // ---- 顺带给出一句话结论，免得叠加线只是「好看但看不出什么」 ----
+  // 用与前端**完全相同的分位算法**（严格小于 + 相等的一半），保证图上看到的就是这里算的。
+  const pctOf = (arr) => {
+    const s = [...arr.filter((x) => x != null)].sort((a, b) => a - b);
+    return arr.map((x) => {
+      if (x == null) return null;
+      let lo = 0, hi = 0;
+      for (const y of s) { if (y < x) lo++; else if (y === x) hi++; }
+      return ((lo + hi / 2) / s.length) * 100;
+    });
+  };
+  const sent = days.map((d) => senti?.daily?.[d]?.sent ?? null);
+  const corr = (a, b) => {
+    const ix = a.map((_, i) => i).filter((i) => a[i] != null && b[i] != null);
+    if (ix.length < 3) return null;
+    const ma = ix.reduce((s, i) => s + a[i], 0) / ix.length;
+    const mb = ix.reduce((s, i) => s + b[i], 0) / ix.length;
+    let num = 0, da = 0, db = 0;
+    for (const i of ix) { num += (a[i] - ma) * (b[i] - mb); da += (a[i] - ma) ** 2; db += (b[i] - mb) ** 2; }
+    return da && db ? num / Math.sqrt(da * db) : null;
+  };
+  const shP = sh ? pctOf(sh) : null;
+  const csP = csi2000 ? pctOf(csi2000) : null;
+  // ⚠️ 用 minSent（DT_TIERS 是映射后的数组），不是 dtStats 原文件里的 sentLo ——
+  //    名字搞错会静默得到 NaN 门档，结论行就会写成「前 0 天（≥NaN）」。
+  const extLo = DT_TIERS?.length ? Math.max(...DT_TIERS.map((t) => t.minSent)) : 84.9;
+  const extIdx = sent.map((v, i) => (v != null && v >= extLo && shP && shP[i] != null ? i : -1)).filter((i) => i >= 0);
+  return {
+    dates: days,
+    sh,
+    csi2000,
+    stat: {
+      n: days.length,
+      rhoSentSh: shP ? corr(sent, shP) : null,
+      rhoShCs: shP && csP ? corr(shP, csP) : null,
+      extLo,
+      extN: extIdx.length,
+      extAvgSh: extIdx.length ? extIdx.reduce((s, i) => s + shP[i], 0) / extIdx.length : null,
+      extAvgCs: extIdx.length && csP ? extIdx.reduce((s, i) => s + csP[i], 0) / extIdx.length : null,
+      extHiN: extIdx.filter((i) => shP[i] >= 50).length, // 极端恐慌但指数仍在中位以上的反例
+    },
+  };
+})();
 
 const markedDays = Object.entries(dtDaily)
   .map(([d, v]) => ({ d, ...v, sent: senti?.daily?.[d]?.sent ?? null }))
@@ -679,7 +747,25 @@ const statePanel = senti
       <div id="sentChart"></div>
       <div class="tiny" style="margin-top:4px">左轴 = <b>情绪分</b>（0~100，与上方刻度同一量纲，越高越恐慌），右轴 = <b>乐观指数</b>（= 100 − 情绪分，镜像，越高越乐观），横轴 = 交易日；两侧是同一个分布（都是 N(50, 15²)）的两种读法，共用网格线。滚轮缩放 · 拖拽平移 · 双击复位；悬停看该日跌停家数。<br>
         彩点：<i class="mk" style="background:#ec4899"></i><i class="mk" style="background:#a855f7"></i><i class="mk" style="background:#f59e0b"></i>恐慌侧（粉/紫/橙，情绪分前 5%/3%/1%）；
-        <i class="mk" style="background:#22d3ee"></i><i class="mk" style="background:#2dd4bf"></i><i class="mk" style="background:#22c55e"></i>乐观侧（青/碧/绿，乐观指数前 5%/3%/1%，即情绪分最<b>低</b>的那部分）。两侧同一分位、不同色相，一个点只会命中一侧。</div>
+        <i class="mk" style="background:#22d3ee"></i><i class="mk" style="background:#2dd4bf"></i><i class="mk" style="background:#22c55e"></i>乐观侧（青/碧/绿，乐观指数前 5%/3%/1%，即情绪分最<b>低</b>的那部分）。两侧同一分位、不同色相，一个点只会命中一侧。<br>
+        叠加两条指数线（<b>按各自窗口内分位绘制</b>，非价格）：<span style="color:#f0a24b">━</span> 上证指数
+        <span style="color:#7c8cf8">━</span> 中证2000 · 真实点位见折线图例与悬停卡片。</div>
+      ${(() => {
+        // 叠加线的结论行。数字全部来自 SENTIDX.stat（构建期算好），不写死，
+        // 免得窗口滚动后文字与图对不上。
+        const st = SENTIDX?.stat;
+        if (!st || st.rhoSentSh == null) return '';
+        const f = (v, d = 2) => (v == null ? '—' : v.toFixed(d));
+        const weak = Math.abs(st.rhoSentSh) < 0.3;
+        return `<div class="tiny" style="margin-top:6px;line-height:1.7;border-left:2px solid #39414f;padding-left:7px">
+<b>叠加线读出来的一件事</b>：窗口内 ${st.n} 天，<b>情绪分与上证分位只有${weak ? '很弱的' : ''}相关（r = ${f(st.rhoSentSh)}）</b>，
+而<b>上证与中证2000 几乎同涨同跌（r = ${f(st.rhoShCs)}）</b> —— 这三年里小盘与大盘基本是一回事，两条线叠着看信息量有限。<br>
+更要注意<b>关系不是单调的</b>：情绪分最高的前 ${st.extN} 天（≥${st.extLo}）上证平均分位低到 <b>${f(st.extAvgSh, 1)}</b>
+（中证2000 ${f(st.extAvgCs, 1)}），确实在低位；但中间两档（78.2~84.9 / 74.7~78.2）平均分位在 50 上下，<b>与平时没区别</b>。
+且这 ${st.extN} 天里有 <b>${st.extHiN} 天指数其实处在中位以上</b> ——「极度恐慌」并不保证「指数在低位」。<br>
+<span style="color:var(--dim)">所以这两条线是<b>背景对照</b>、不是择时依据：它能告诉你「这次恐慌有没有伴随下跌」，不能告诉你「跌到底了」。</span>
+</div>`;
+      })()}
     </div>
     <div>
       <div class="sect">恐慌类型（按跌停股市值结构，仅家数≥10 时判定）</div>
@@ -832,7 +918,26 @@ const PDESC = {
 <b>⚠️ 代价（重要）</b>：<code>sent</code> 是<b>相对读数</b> —— 同一个绝对 score 在不同窗口里会得到不同的 sent；<code>sent = 80</code> 的含义是「在当前窗口内严重程度排前 20%」，<b>既不是 80% 的概率，也不是绝对强度</b>。要看绝对强度请读 <code>score</code> 或上面那张表。窗口长度由 <code>DT_WINDOW</code> 控制，当前 <b>${senti?.window?.n ?? 743} 个交易日（约三年）</b>。<br>
 <b>阈值表的红色行</b>：判定标准是「边际 ≥ 3pp 且二项检验 p &lt; 0.1」，二者缺一即标红。<b>注意多重比较</b>：同时看 7 个阈值再挑最显著的，等价于多重检验，需按 Bonferroni 把门槛压到 0.05/7 ≈ 0.007 —— 当前只有「情绪分 ≥ 80」过得了这一关。<br>
 恐慌类型按跌停股的市值结构划分，<b>仅在家数 ≥ 10 时判定</b>：微盘踩踏（小盘 ≥65%）、权重杀跌（大盘 ≥50%）、全面抛售。<br>
-此前做过的「情绪分 → 反弹概率」机器学习式预测因样本外表现不敌基准，已从面板移除。右下角那张表是<b>更朴素的条件概率</b>（不建模、不挑变量，直接把情绪分阈值与次日涨跌对上），留作背景参考 —— 里面标红的阈值在当前窗口下已无区分度，<b>不要把整张表当作可用信号</b>。`,
+此前做过的「情绪分 → 反弹概率」机器学习式预测因样本外表现不敌基准，已从面板移除。右下角那张表是<b>更朴素的条件概率</b>（不建模、不挑变量，直接把情绪分阈值与次日涨跌对上），留作背景参考 —— 里面标红的阈值在当前窗口下已无区分度，<b>不要把整张表当作可用信号</b>。<br><br>
+<b>散点图上叠加的两条指数线（上证 / 中证2000）为什么画的是「分位」而不是价格</b>：<br>
+这张图的纵轴是 <b>0~100 的位置量</b>（情绪分本身就是分位映射出来的）。价格是 3800 / 3000 这样的量纲，直接画上去会同时错两处：<br>
+&nbsp;&nbsp;① 0~100 的网格线就<b>读不出任何价格含义</b>了，左轴刻度等于变成假的；<br>
+&nbsp;&nbsp;② 上证 ~3800 与中证2000 ~3000 是两个量级，<b>它们之间也没法共用一根价格轴</b>。<br>
+所以把每个指数也映射成它在<b>本窗口内的分位</b>（0~100）。这样三个量才是同一种东西 ——
+「在近三年里处于什么位置」—— 可以直接叠着看：<b>某天情绪分冲到 85 时，指数处在什么分位</b>。<br>
+<b>分位映射的三个性质</b>：<br>
+&nbsp;&nbsp;· <b>形状完整保留</b>：分位与价格严格单调同向，涨跌的拐点、幅度关系都不变；<br>
+&nbsp;&nbsp;· <b>缩放不重标</b>：分位是在整个窗口上一次算好的，缩放/平移只裁剪不重算 ——
+不像「按可见区间归一化」那样，放大后会把噪声放大成剧烈波动；<br>
+&nbsp;&nbsp;· <b>两端会变平</b>：价格创新高时，分位已经在 95+ 附近横着走。<b>这是分位映射的固有特性，不是 bug</b>；
+分位再也高不过 100，价格却可以继续涨。<br>
+<b>代价与补偿</b>：分位牺牲了「价格涨了多少」的直接读数，所以<b>真实收盘价始终给出</b> ——
+图例上是当前可见区间的末值，悬停卡片上是当日实际点位，两个地方都同时附了分位。看绝对水平请读这两个数。<br>
+<b>数据源</b>：上证取 <code>daily-long.json</code>（东财/新浪，2010 起）；中证2000 <code>932000</code> 是<b>中证独有指数</b>，
+东财 kline（secid 2/1/0.932000 全部取不到）、腾讯、新浪 hq <b>都没有</b>，只有<b>中证官方接口</b>能取，
+且能回溯到基日（约 3100 根）。<br>
+<b>⚠️ 中证2000 没有降级路径</b>：官方源挂了就只能沿用旧数据（其余四个指数都有东财→同花顺→新浪三级降级）。
+若散点图上少了一条线，先查 <code>daily-long.json</code> 里 <code>csi2000</code> 是否还在。`,
   },
   scenario: {
     title: '开盘跳空 · 历史情景参考',
@@ -1324,6 +1429,7 @@ ${scenarioPanelHtml}
 <script>window.DTDATA = ${JSON.stringify(
     Object.fromEntries(Object.entries(dtDaily).map(([d, v]) => [d, { ...v, sent: senti?.daily?.[d]?.sent ?? null }])),
   )};</script>
+<script>window.SENTIDX = ${JSON.stringify(SENTIDX)};</script>
 <script>window.DTTIERS = ${JSON.stringify(DT_TIERS)};</script>
 <script>window.DTTIERS_OPT = ${JSON.stringify(DT_TIERS_OPT)};</script>
 <script>window.DTINTRA = ${JSON.stringify(

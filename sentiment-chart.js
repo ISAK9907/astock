@@ -2,6 +2,17 @@
 //   为什么右轴不用重新拟合：情绪分是 50 + 15·Φ⁻¹(p) 构造出来的，天然 N(50,15²)；
 //   关于 50 镜像后仍是 N(50,15²)，均值/标准差/偏度/峰度逐项相同，所以两个刻度是同一个分布
 //   的两种读法，网格线共用，只是左右读数互为镜像。
+//
+// 叠加的两条指数线（上证 / 中证2000）为什么用「分位」而不是价格：
+//   这张图的纵轴是 0~100 的**位置量**（情绪分本身就是分位映射出来的）。
+//   指数是 3800、3000 这样的价格量纲，直接画上去会同时犯两个错：
+//   ① 纵轴刻度变成假的（0~100 的网格线读不出价格的任何含义）；
+//   ② 两个不同的价格量级（上证 ~3800 / 中证2000 ~3000）之间也没法共用一根轴。
+//   所以把每个指数也映射成它在**本窗口内的分位**（0~100），三个量才是同一种东西：
+//   「在近三年里处于什么位置」。分位数与价格单调同向，涨跌形状完整保留。
+//   代价是：价格的分位曲线在两端会变平（高位横着走），这是分位映射的固有特性，不是 bug。
+//   真实价格在悬停卡片和图例里给出，所以读数不受影响。
+//
 // 交互与 K 线图保持一致：滚轮缩放（以光标为锚点）、拖拽平移、双击复位；触屏用 dzTouch。
 // 悬停显示该日的跌停家数（用户明确要求的），另附情绪分、乐观指数与严重度分。
 (function () {
@@ -20,6 +31,44 @@
     return;
   }
 
+  // ---------------- 叠加的指数线 ----------------
+  // 每条线两个数组：raw = 真实收盘价（悬停/图例用），pos = 窗口内分位（画图用）。
+  // 分位用「严格小于的比例 + 相等的一半」算，遇到并列值不会偏向一侧。
+  const LINES = (() => {
+    const S = window.SENTIDX;
+    if (!S?.dates?.length) return [];
+    // 日期 → 下标，便于把散点图的日期映射到指数序列上
+    const at = new Map(S.dates.map((d, i) => [d, i]));
+    const defs = [
+      { key: 'sh', name: '上证指数', color: '#f0a24b' },
+      { key: 'csi2000', name: '中证2000', color: '#7c8cf8' },
+    ];
+    const out = [];
+    for (const def of defs) {
+      const src = S[def.key];
+      if (!src) continue;
+      const raw = B.map((r) => {
+        const i = at.get(r.d);
+        return i == null || src[i] == null ? null : src[i];
+      });
+      if (raw.every((v) => v == null)) continue;
+      // 分位：在**整个窗口**的有效样本上算，与缩放无关 —— 缩放时只裁剪不重标
+      const valid = raw.filter((v) => v != null);
+      const sorted = [...valid].sort((a, b) => a - b);
+      const pos = raw.map((v) => {
+        if (v == null) return null;
+        let lo = 0, hi = 0;
+        for (const x of sorted) { if (x < v) lo++; else if (x === v) hi++; }
+        return ((lo + hi / 2) / sorted.length) * 100;
+      });
+      out.push({ ...def, raw, pos });
+    }
+    return out;
+  })();
+  const hasLines = LINES.length > 0;
+  // 有叠加线时底部要多留一行放图例，否则图例会压住横轴月份
+  const LEG = hasLines ? 15 : 0;
+
   const NS = 'http://www.w3.org/2000/svg';
   const mk = (t, a) => {
     const e = document.createElementNS(NS, t);
@@ -35,9 +84,9 @@
   tip.style.display = 'none';
   host.appendChild(tip);
 
-  const H = 150;
+  const H = hasLines ? 168 : 150;
   // 左右各留 30px 放刻度：左边读恐慌、右边读乐观
-  const P = { t: 16, r: 30, b: 20, l: 30 };
+  const P = { t: 16, r: 30, b: hasLines ? 36 : 20, l: 30 };
   let W = 500;
   let iw = W - P.l - P.r;
   const ih = H - P.t - P.b;
@@ -71,14 +120,20 @@
   let dragging = false;
   let lastPx = 0;
 
-  const gGrid = mk('g', {});
-  const gDots = mk('g', {});
-  const gHover = mk('g', {});
-  const gX = mk('g', {});
+  // 每个分组打上 data-g 标记：测试与后续维护都按标记找，不靠下标 ——
+  // 之前加了「指数线」分组，下标整体后移，靠下标的测试立刻读错分组。
+  const gGrid = mk('g', { 'data-g': 'grid' });
+  const gLines = mk('g', { 'data-g': 'lines' }); // 指数线画在散点**下面**，免得盖住标记日的高亮
+  const gDots = mk('g', { 'data-g': 'dots' });
+  const gHover = mk('g', { 'data-g': 'hover' });
+  const gX = mk('g', { 'data-g': 'xaxis' });
+  const gLeg = mk('g', { 'data-g': 'legend' });
   svg.appendChild(gGrid);
+  svg.appendChild(gLines);
   svg.appendChild(gDots);
   svg.appendChild(gHover);
   svg.appendChild(gX);
+  svg.appendChild(gLeg);
 
   const yOf = (v) => P.t + ih - (v / 100) * ih;
   const xOf = (i, span) => P.l + ((i - i0) / span) * iw;
@@ -131,6 +186,37 @@
     capR.textContent = '乐观指数';
     gGrid.appendChild(capR);
 
+    // ---- 指数线（画在散点之下）----
+    // 只画可见区间；分位是在整个窗口上算好的，所以缩放时线只被裁剪、不会被重新拉伸，
+    // 不会出现「放大后噪声被放大成剧烈波动」的错觉。
+    gLines.textContent = '';
+    if (hasLines) {
+      for (const L of LINES) {
+        let seg = [];
+        const flush = () => {
+          if (seg.length > 1) {
+            gLines.appendChild(mk('polyline', {
+              points: seg.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' '),
+              fill: 'none', stroke: L.color, 'stroke-width': 1.15,
+              'stroke-linejoin': 'round', opacity: 0.9,
+            }));
+          }
+          seg = [];
+        };
+        for (let i = a; i <= b; i++) {
+          const p = L.pos[i];
+          if (p == null) { flush(); continue; } // 缺数据的日期断开，不要连成假线
+          seg.push([xOf(i, span), yOf(p)]);
+        }
+        flush();
+        // 末日一个小端点，方便一眼看出线画到哪
+        const lastI = (() => { for (let i = b; i >= a; i--) if (L.pos[i] != null) return i; return -1; })();
+        if (lastI >= 0) {
+          gLines.appendChild(mk('circle', { cx: +xOf(lastI, span).toFixed(2), cy: +yOf(L.pos[lastI]).toFixed(2), r: 2, fill: L.color }));
+        }
+      }
+    }
+
     // ---- 散点 ----
     gDots.textContent = '';
     for (let i = a; i <= b; i++) {
@@ -170,7 +256,7 @@
       const x = xOf(i, span);
       const isJan = d.slice(5, 7) === '01';
       const attrs = {
-        x: +x.toFixed(1), y: H - 6, 'font-size': '8.5',
+        x: +x.toFixed(1), y: H - LEG - 5, 'font-size': '8.5',
         'text-anchor': k === 0 ? 'start' : k === chosen.length - 1 ? 'end' : 'middle',
       };
       // 年份标签走 CSS 类（标红加粗），这样亮色主题能另配一套颜色；
@@ -181,6 +267,30 @@
       tx.textContent = labelOf(d);
       gX.appendChild(tx);
     });
+
+    // ---- 图例：指数线的颜色 / 名称 / 最后一次可见的收盘价与分位 ----
+    // 读数跟着可见区间走（缩放后看到的就是那一段末值），真实价格始终给出，
+    // 所以分位映射没有牺牲可读性。
+    gLeg.textContent = '';
+    if (hasLines) {
+      const compact = W < 400; // 窄屏只留色块和数值，省掉指数名
+      const ly = H - 4;
+      let lx = P.l;
+      for (const L of LINES) {
+        let li = -1;
+        for (let i = b; i >= a; i--) if (L.pos[i] != null) { li = i; break; }
+        if (li < 0) continue;
+        gLeg.appendChild(mk('line', { x1: lx, x2: lx + 10, y1: ly - 3, y2: ly - 3, stroke: L.color, 'stroke-width': 1.8 }));
+        const label = `${compact ? '' : L.name + ' '}${Math.round(L.raw[li])}（分位 ${Math.round(L.pos[li])}）`;
+        const t = mk('text', { x: lx + 13, y: ly, 'font-size': '8.5', fill: '#9aa4b2' });
+        t.textContent = label;
+        gLeg.appendChild(t);
+        // 中文按全宽、其余按半宽估宽（SVG 里取不到 textWidth，只能估）
+        let wpx = 0;
+        for (const ch of label) wpx += ch.charCodeAt(0) > 255 ? 8.6 : 4.7;
+        lx += 13 + wpx + 12;
+      }
+    }
     drawHover();
   }
 
@@ -202,7 +312,15 @@
       `<div><i style="background:${c}"></i><span class="n">情绪分</span><b>${r.sent.toFixed(1)}</b></div>` +
       `<div><i style="background:${cOpt || '#4fb3c8'}"></i><span class="n">乐观指数</span><b>${opt.toFixed(1)}</b></div>` +
       `<div><i style="background:#ef4d5a"></i><span class="n">跌停家数</span><b>${r.dt}</b></div>` +
-      `<div><i style="background:#39414f"></i><span class="n">严重度分</span><b>${r.score}</b></div>`;
+      `<div><i style="background:#39414f"></i><span class="n">严重度分</span><b>${r.score}</b></div>` +
+      // 叠加的指数：给出真实收盘价 + 窗口内分位（分位才是图上那条线的纵坐标）
+      LINES.map((L) => {
+        const v = L.raw[hover];
+        return v == null
+          ? ''
+          : `<div><i style="background:${L.color}"></i><span class="n">${L.name}</span><b>${v.toFixed(2)}</b>` +
+            `<span class="n" style="margin-left:4px">分位 ${Math.round(L.pos[hover])}</span></div>`;
+      }).join('');
     tip.style.display = '';
     tip.style.left = '0px';
     tip.style.top = '0px';

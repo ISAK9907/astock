@@ -15,7 +15,7 @@
 //     盘前信号面板的 T 日状态一直钉在昨天。
 //   · 抓不到就把旧历史原样写回，绝不因为一次失败丢数据；新数据比旧文件还旧则拒绝写入。
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { fetchJson, sleep, sinaQuote, ths, emKline } from './sources.mjs';
+import { fetchJson, sleep, sinaQuote, ths, emKline, csindex } from './sources.mjs';
 
 const H = { Referer: 'https://quote.eastmoney.com/' };
 // 新浪对沪市指数给「手」、对深市指数给「股」，东财一律是「手」；用 amount/volume 比值
@@ -25,6 +25,11 @@ const IDX = [
   { key: 'szcz', name: '深证成指', em: '0.399001', sina: 'sz399001', ths: 'sz_399001', vDiv: 100 },
   { key: 'cyb', name: '创业板指', em: '0.399006', sina: 'sz399006', ths: 'sz_399006', vDiv: 100 },
   { key: 'hs300', name: '沪深300', em: '1.000300', sina: 'sh000300', ths: 'sh_1B0300', vDiv: 1 },
+  // 中证2000：加它是为了在「恐慌情绪散点图」上叠加小盘股走势做对照。
+  // 它是中证独有指数 —— 东财 kline 没有（secid 2/1/0.932000 全部取不到）、腾讯也没有、
+  // 新浪 hq 返回空，**只有中证官方接口能拿**，且能回溯到指数基日（约 3100 根，覆盖情绪窗口绰绰有余）。
+  // 注意：同花顺的 sh_932000 也不可用，所以这一条没有降级路径 —— 官方源挂了就沿用旧数据。
+  { key: 'csi2000', name: '中证2000', csi: '932000', em: null, sina: null, ths: null, vDiv: 1 },
 ];
 
 const iso = (d8) => `${d8.slice(0, 4)}-${d8.slice(4, 6)}-${d8.slice(6, 8)}`;
@@ -41,7 +46,7 @@ const saneBar = (b) =>
 const prev = existsSync('daily-long.json') ? JSON.parse(readFileSync('daily-long.json', 'utf8')) : null;
 const out = { generatedAt: new Date().toISOString(), series: {} };
 const today = todayIso();
-const used = { em: 0, ths: 0, sina: 0 };
+const used = { em: 0, ths: 0, sina: 0, csi: 0 };
 
 // ---------- 新浪兜底（一次取齐，成功就用）----------
 let sina = null;
@@ -53,28 +58,45 @@ try {
 }
 
 for (const idx of IDX) {
-  const { key, name, em, sina: sinaSym, ths: thsCode, vDiv } = idx;
+  const { key, name, em, sina: sinaSym, ths: thsCode, vDiv, csi } = idx;
   let bars = null;
   let src = '';
 
-  // ---- 一级：东财（镜像轮换：机房 IP 下单台时通时断，见 sources.mjs 的 emKline）----
-  try {
-    const j = await emKline(
-      { secid: em, fields1: 'f1,f2,f3,f4,f5,f6', fields2: 'f51,f52,f53,f54,f55,f56,f57,f58', klt: '101', fqt: '0', lmt: 4000 },
-      { retries: 2, baseDelay: 2000, timeoutMs: 20000 },
-    );
-    const k = j?.data?.klines ?? [];
-    if (k.length) {
-      bars = k.map((s) => {
-        const p = s.split(',');
-        return { d: p[0], o: +p[1], c: +p[2], h: +p[3], l: +p[4], v: +p[5], amt: +p[6] };
-      });
-      src = '东财';
-      used.em++;
-      console.log(`  ✓ ${name.padEnd(8)} 东财  ${String(bars.length).padStart(4)} 根  ${bars[0].d} → ${bars.at(-1).d}`);
+  // ---- 零级：中证官方（只有 CSI 独有指数需要；东财/腾讯都取不到 932000）----
+  if (csi && !bars) {
+    try {
+      const rows = await csindex.daily(csi, '20100101', today.replace(/-/g, ''));
+      if (rows.length) {
+        bars = rows.filter((r) => r.c > 0).map((r) => ({ d: r.d, o: r.o, c: r.c, h: r.h, l: r.l, v: r.v ?? null, amt: r.amt ?? null }));
+        src = '中证官方';
+        used.csi++;
+        console.log(`  ✓ ${name.padEnd(8)} 中证官方 ${String(bars.length).padStart(4)} 根  ${bars[0].d} → ${bars.at(-1).d}`);
+      }
+    } catch (e) {
+      console.warn(`  ! ${name.padEnd(8)} 中证官方失败（${String(e.message).slice(0, 40)}）`);
     }
-  } catch (e) {
-    console.warn(`  ! ${name.padEnd(8)} 东财失败（${e.cause?.code ?? e.name}）`);
+  }
+
+  // ---- 一级：东财（镜像轮换：机房 IP 下单台时通时断，见 sources.mjs 的 emKline）----
+  if (em && !bars) {
+    try {
+      const j = await emKline(
+        { secid: em, fields1: 'f1,f2,f3,f4,f5,f6', fields2: 'f51,f52,f53,f54,f55,f56,f57,f58', klt: '101', fqt: '0', lmt: 4000 },
+        { retries: 2, baseDelay: 2000, timeoutMs: 20000 },
+      );
+      const k = j?.data?.klines ?? [];
+      if (k.length) {
+        bars = k.map((s) => {
+          const p = s.split(',');
+          return { d: p[0], o: +p[1], c: +p[2], h: +p[3], l: +p[4], v: +p[5], amt: +p[6] };
+        });
+        src = '东财';
+        used.em++;
+        console.log(`  ✓ ${name.padEnd(8)} 东财  ${String(bars.length).padStart(4)} 根  ${bars[0].d} → ${bars.at(-1).d}`);
+      }
+    } catch (e) {
+      console.warn(`  ! ${name.padEnd(8)} 东财失败（${e.cause?.code ?? e.name}）`);
+    }
   }
 
   if (!bars) {
@@ -85,7 +107,7 @@ for (const idx of IDX) {
     let gapFilled = 0;
 
     // ---- 二级：同花顺补缺口 ----
-    if (from) {
+    if (from && thsCode) {
       const y0 = +from.slice(0, 4);
       const y1 = +today.slice(0, 4);
       for (let y = y0; y <= y1; y++) {
@@ -112,7 +134,7 @@ for (const idx of IDX) {
     }
 
     // ---- 三级：新浪覆盖末日（带成交额）----
-    const q = sina?.[sinaSym];
+    const q = sinaSym ? sina?.[sinaSym] : null;
     if (q && q.date && q.price > 0) {
       const row = {
         d: q.date, o: +q.open.toFixed(3), c: +q.price.toFixed(3),
@@ -152,9 +174,9 @@ if (!Object.keys(out.series).length) {
 }
 out.source = used.em === IDX.length
   ? 'eastmoney kline klt=101 fqt=0（不复权）'
-  : `eastmoney 为主；东财不可用部分：同花顺 v6/line（o/h/l/c，无成交额）补缺口 + 新浪 hq（含成交额）覆盖末日`;
+  : `混合来源：东财 ${used.em} 个 / 中证官方 ${used.csi} 个（CSI 独有指数，东财腾讯都取不到）；东财不可用部分：同花顺 v6/line（o/h/l/c，无成交额）补缺口 + 新浪 hq（含成交额）覆盖末日`;
 
 writeFileSync('daily-long.json', JSON.stringify(out), 'utf8');
 const missingAmt = Object.values(out.series).reduce((s, x) => s + x.bars.filter((b) => !b.amt).length, 0);
-console.log(`\nwrote daily-long.json（东财 ${used.em} / 同花顺 ${used.ths} / 新浪 ${used.sina}，末日 ${uniq.join(',')}）`);
+console.log(`\nwrote daily-long.json（东财 ${used.em} / 中证官方 ${used.csi} / 同花顺 ${used.ths} / 新浪 ${used.sina}，末日 ${uniq.join(',')}）`);
 if (missingAmt) console.warn(`  ⚠️ 有 ${missingAmt} 根 bar 缺成交额（同花顺补的日子）；signal.mjs 会按有效样本数判断，不足 15/20 时不输出量能比`);

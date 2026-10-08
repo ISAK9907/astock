@@ -1,17 +1,17 @@
 {
- "generatedAt": "2026-10-07T12:52:58.697Z",
+ "generatedAt": "2026-10-08T12:28:02.220Z",
  "source": "daily-long.json（东财日线，2010 起 4000 根）",
  "zAxis": true,
  "indices": {
   "sh": {
    "name": "上证指数",
    "from": "2010-04-15",
-   "to": "2026-09-30",
+   "to": "2026-10-08",
    "base": {
-    "n": 3990,
-    "fade": 44.6,
-    "fadeK": 1781,
-    "meanIntra": 0.103,
+    "n": 3991,
+    "fade": 44.7,
+    "fadeK": 1782,
+    "meanIntra": 0.102,
     "meanFull": 0.015,
     "meanGap": -0.088,
     "pVsBase": null,
@@ -30,8 +30,8 @@
      "meanIntra": 0.141,
      "meanFull": -3.264,
      "meanGap": -3.404,
-     "pVsBase": 0.9545,
-     "edge": 0.9,
+     "pVsBase": 0.9599,
+     "edge": 0.8,
      "h1": {
       "n": 6,
       "fade": 66.7
@@ -55,7 +55,7 @@
      "meanFull": -1.378,
      "meanGap": -1.681,
      "pVsBase": 1,
-     "edge": -9.5,
+     "edge": -9.6,
      "h1": {
       "n": 36,
       "fade": 27.8
@@ -78,8 +78,8 @@
      "meanIntra": 0.047,
      "meanFull": -0.69,
      "meanGap": -0.738,
-     "pVsBase": 0.5881,
-     "edge": 1.5,
+     "pVsBase": 0.6128,
+     "edge": 1.4,
      "h1": {
       "n": 153,
       "fade": 45.8
@@ -96,21 +96,21 @@
      "hi": 0,
      "label": "−0.5 ~ 0",
      "side": "mid",
-     "n": 2000,
+     "n": 2001,
      "fade": 45.9,
-     "fadeK": 917,
+     "fadeK": 918,
      "meanIntra": 0.066,
-     "meanFull": -0.14,
+     "meanFull": -0.141,
      "meanGap": -0.206,
-     "pVsBase": 0.2608,
-     "edge": 1.3,
+     "pVsBase": 0.2896,
+     "edge": 1.2,
      "h1": {
       "n": 1054,
       "fade": 45.3
      },
      "h2": {
-      "n": 946,
-      "fade": 46.5
+      "n": 947,
+      "fade": 46.6
      },
      "stable": false,
      "sig": false
@@ -127,7 +127,7 @@
      "meanFull": 0.351,
      "meanGap": 0.185,
      "pVsBase": 1,
-     "edge": -1.7,
+     "edge": -1.8,
      "h1": {
       "n": 682,
       "fade": 41.2
@@ -151,7 +151,7 @@
      "meanFull": 0.977,
      "meanGap": 0.781,
      "pVsBase": 1,
-     "edge": -3.4,
+     "edge": -3.5,
      "h1": {
       "n": 54,
       "fade": 40.7
@@ -174,8 +174,8 @@
      "meanIntra": -0.045,
      "meanFull": 1.147,
      "meanGap": 1.188,
-     "pVsBase": 0.7107,
-     "edge": 3.5,
+     "pVsBase": 0.7186,
+     "edge": 3.4,
      "h1": {
       "n": 5,
       "fade": 60
@@ -198,8 +198,8 @@
      "meanIntra": -0.467,
      "meanFull": 1.697,
      "meanGap": 2.176,
-     "pVsBase": 0.0837,
-     "edge": 30.4,
+     "pVsBase": 0.0848,
+     "edge": 30.3,
      "h1": {
       "n": 3,
       "fade": 100
@@ -222,8 +222,8 @@
      "meanIntra": -2.26,
      "meanFull": 1.025,
      "meanGap": 3.404,
-     "pVsBase": 0.0258,
-     "edge": 55.4,
+     "pVsBase": 0.0261,
+     "edge": 55.3,
      "h1": {
       "n": 1,
       "fade": 100
@@ -246,8 +246,8 @@
      "meanIntra": -3.204,
      "meanFull": 2.161,
      "meanGap": 5.602,
-     "pVsBase": 0.0536,
-     "edge": 55.4,
+     "pVsBase": 0.054,
+     "edge": 55.3,
      "h1": {
       "n": 1,
       "fade": 100
@@ -264,13 +264,13 @@
   "szcz": {
    "name": "深证成指",
    "from": "2010-04-15",
-   "to": "2026-09-30",
+   "to": "2026-10-08",
    "base": {
-    "n": 3990,
+    "n": 3991,
     "fade": 48,
-    "fadeK": 1915,
-    "meanIntra": 0.075,
-    "meanFull": 0.016,
+    "fadeK": 1916,
+    "meanIntra": 0.074,
+    "meanFull": 0.015,
     "meanGap": -0.059,
     "pVsBase": null,
     "edge": null
@@ -378,20 +378,20 @@
      "hi": 0.5,
      "label": "0 ~ 0.5",
      "side": "mid",
-     "n": 1554,
-     "fade": 44.9,
-     "fadeK": 698,
-     "meanIntra": 0.168,
-     "meanFull": 0.421,
+     "n": 1555,
+     "fade": 45,
+     "fadeK": 699,
+     "meanIntra": 0.167,
+     "meanFull": 0.419,
      "meanGap": 0.252,
      "pVsBase": 1,
-     "edge": -3.1,
+     "edge": -3,
      "h1": {
       "n": 790,
       "fade": 43
      },
      "h2": {
-      "n": 764,
+      "n": 765,
       "fade": 46.9
      },
      "stable": true,
@@ -522,12 +522,12 @@
   "cyb": {
    "name": "创业板指",
    "from": "2010-06-01",
-   "to": "2026-09-30",
+   "to": "2026-10-08",
    "base": {
-    "n": 3958,
+    "n": 3959,
     "fade": 48.3,
-    "fadeK": 1912,
-    "meanIntra": 0.105,
+    "fadeK": 1913,
+    "meanIntra": 0.104,
     "meanFull": 0.046,
     "meanGap": -0.059,
     "pVsBase": null,
@@ -636,20 +636,20 @@
      "hi": 0.5,
      "label": "0 ~ 0.5",
      "side": "mid",
-     "n": 1531,
-     "fade": 45.3,
-     "fadeK": 694,
-     "meanIntra": 0.245,
-     "meanFull": 0.545,
+     "n": 1532,
+     "fade": 45.4,
+     "fadeK": 695,
+     "meanIntra": 0.243,
+     "meanFull": 0.543,
      "meanGap": 0.299,
      "pVsBase": 1,
-     "edge": -3,
+     "edge": -2.9,
      "h1": {
       "n": 753,
       "fade": 41.2
      },
      "h2": {
-      "n": 778,
+      "n": 779,
       "fade": 49.4
      },
      "stable": false,
@@ -780,11 +780,11 @@
   "hs300": {
    "name": "沪深300",
    "from": "2010-04-15",
-   "to": "2026-09-30",
+   "to": "2026-10-08",
    "base": {
-    "n": 3990,
+    "n": 3991,
     "fade": 47.8,
-    "fadeK": 1908,
+    "fadeK": 1909,
     "meanIntra": 0.08,
     "meanFull": 0.018,
     "meanGap": -0.062,
@@ -870,20 +870,20 @@
      "hi": 0,
      "label": "−0.5 ~ 0",
      "side": "mid",
-     "n": 1811,
+     "n": 1812,
      "fade": 48.8,
-     "fadeK": 884,
-     "meanIntra": 0.035,
-     "meanFull": -0.201,
+     "fadeK": 885,
+     "meanIntra": 0.034,
+     "meanFull": -0.202,
      "meanGap": -0.236,
-     "pVsBase": 0.3882,
+     "pVsBase": 0.375,
      "edge": 1,
      "h1": {
       "n": 949,
       "fade": 47.8
      },
      "h2": {
-      "n": 862,
+      "n": 863,
       "fade": 49.9
      },
      "stable": false,
