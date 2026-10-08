@@ -190,9 +190,14 @@
 
     // ---- 指数线（画在散点之下）----
     // 纵坐标 = **相对当前显示区间第一个点的涨跌%**，每次 render 现算：
-    //   基准随缩放/平移移动，所以「显示范围内第一个点」永远落在 0% 线上，
+    //   基准随缩放/平移移动，所以「显示范围内第一个点」永远落在 0% 上，
     //   缩放到哪一段就看那一段的相对涨跌 —— 与「45日5分钟线」里累计涨跌幅那张图同一口径。
-    // 代价（必须说清）：纵轴位置不再能跨区间比较，同一根高度在不同缩放下含义不同；
+    //
+    // ⚠️ 0% 钉在纵轴的 **50 中位线**，不是图底部：这张图只有一条「中性线」——
+    //   情绪分的 50（分布中位）与指数的 0%（区间首点）重合，读数才自洽，
+    //   指数线在 50 以上就是相对首点涨、以下就是跌，与散点的读法一致。
+    //   因此百分比刻度必须是**围绕 0 对称**的区间，否则 0% 没法同时落在 50 上。
+    // 代价（必须说清）：纵轴高度不再能跨区间比较，同一根高度在不同缩放下含义不同；
     //   真实点位与百分比都在图例和悬停卡片里给出。
     gLines.textContent = '';
     if (hasLines) {
@@ -213,24 +218,21 @@
           if (v > hi) hi = v;
         }
       }
-      if (!isFinite(lo)) { lo = -1; hi = 1; }
-      // 留白与 intraday-zoom.js 一致：至少 ±0.15%，否则按跨度的 12%
-      const pad = Math.max(0.15, (hi - lo) * 0.12);
-      const minV = lo - pad, maxV = hi + pad;
-      const yPct = (v) => P.t + ih - ((v - minV) / (maxV - minV)) * ih;
+      if (!isFinite(lo)) { lo = 0; hi = 0; }
+      // 对称半幅：取上下界绝对值的较大者，再留 8% 余量让曲线不贴顶贴底。
+      // 下限 0.5% 防止「几乎没波动」时把噪声放大成满屏。
+      const half = Math.max(0.5, Math.max(Math.abs(lo), Math.abs(hi)) * 1.08);
+      // 0% → 50 线，+half → 100（顶），−half → 0（底）
+      const yPct = (v) => yOf(50 + (v / half) * 50);
 
-      // 0% 基线：基准就在这条线上，不画出来读者无法校准。
-      // 基准日期写在**这条线旁边**而不是图例里 —— 图例右边放日期在窄屏（W≈240）会压到左边的条目上，
-      // 而这里正是读者需要它的位置（虚线本身就是「以显示区间首点为 0」这句话的落点）。
+      // 0% 就是 50 那条网格线（gGrid 已经画过），这里只加文字标注说明它就是基准。
+      // 不另画虚线：50 线本来就是全图唯一的高亮网格线，再叠一条只会更乱。
+      // 基准日期写在这里而不是图例里 —— 图例右边放日期在窄屏（W≈240）会压到左边的条目上。
       const bi0 = (() => { for (let i = a; i <= b; i++) if (pct.some((arr) => arr && arr[i] != null)) return i; return -1; })();
-      if (minV <= 0 && maxV >= 0) {
-        const y0 = yPct(0);
-        gLines.appendChild(mk('line', {
-          x1: P.l, x2: W - P.r, y1: +y0.toFixed(2), y2: +y0.toFixed(2),
-          stroke: '#6b7688', 'stroke-width': 0.7, 'stroke-dasharray': '4 3', opacity: 0.75,
-        }));
-        const t0 = mk('text', { x: P.l + 3, y: +(y0 - 2.5).toFixed(2), fill: '#6b7688', 'font-size': '8' });
-        t0.textContent = bi0 >= 0 ? `0%（基准 ${B[bi0].d}）` : '0%';
+      {
+        const y0 = yOf(50);
+        const t0 = mk('text', { x: P.l + 3, y: +(y0 - 2.5).toFixed(2), fill: '#8b93a3', 'font-size': '8' });
+        t0.textContent = bi0 >= 0 ? `0% = 中位线（基准 ${B[bi0].d}）` : '0% = 中位线';
         gLines.appendChild(t0);
       }
 
@@ -262,18 +264,19 @@
         }
       }
 
-      // ---- 最右侧一列：涨跌% 刻度（只标上下界和 0，避免与左侧 5 条网格线打架）----
+      // ---- 最右侧一列：涨跌% 刻度 ----
+      // 与既有的 0/25/50/75/100 网格线**对齐**（不另画网格），五个位置分别是
+      // +half / +half/2 / 0 / −half/2 / −half，0% 正好落在 50 中位线上。
       const capP = mk('text', { x: W - 2, y: P.t - 6, fill: '#9aa4b2', 'font-size': '8.5', 'text-anchor': 'end' });
       capP.textContent = '指数涨跌%';
       gLines.appendChild(capP);
-      const marks = [{ v: maxV, s: `${maxV >= 0 ? '+' : ''}${maxV.toFixed(1)}%` }, { v: minV, s: `${minV >= 0 ? '+' : ''}${minV.toFixed(1)}%` }];
-      if (minV <= 0 && maxV >= 0) marks.push({ v: 0, s: '0%' });
-      for (const m of marks) {
+      const fmtP = (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+      for (const v of [half, half / 2, 0, -half / 2, -half]) {
         const t = mk('text', {
-          x: W - 2, y: +(yPct(m.v) + 3).toFixed(2),
-          fill: m.v === 0 ? '#6b7688' : '#9aa4b2', 'font-size': '8', 'text-anchor': 'end',
+          x: W - 2, y: +(yPct(v) + 3).toFixed(2),
+          fill: v === 0 ? '#8b93a3' : '#9aa4b2', 'font-size': '8', 'text-anchor': 'end',
         });
-        t.textContent = m.s;
+        t.textContent = fmtP(v);
         gLines.appendChild(t);
       }
       // 图例与悬停也要用同一套算出来的百分比
