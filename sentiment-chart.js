@@ -3,15 +3,19 @@
 //   关于 50 镜像后仍是 N(50,15²)，均值/标准差/偏度/峰度逐项相同，所以两个刻度是同一个分布
 //   的两种读法，网格线共用，只是左右读数互为镜像。
 //
-// 叠加的两条指数线（上证 / 中证2000）为什么用「分位」而不是价格：
-//   这张图的纵轴是 0~100 的**位置量**（情绪分本身就是分位映射出来的）。
+// 叠加的两条指数线（上证 / 中证2000）：纵轴 = **相对当前显示区间第一个点的涨跌%**。
+//   为什么不用价格直接画：这张图的左轴是 0~100 的情绪分，右轴是它的镜像。
 //   指数是 3800、3000 这样的价格量纲，直接画上去会同时犯两个错：
-//   ① 纵轴刻度变成假的（0~100 的网格线读不出价格的任何含义）；
-//   ② 两个不同的价格量级（上证 ~3800 / 中证2000 ~3000）之间也没法共用一根轴。
-//   所以把每个指数也映射成它在**本窗口内的分位**（0~100），三个量才是同一种东西：
-//   「在近三年里处于什么位置」。分位数与价格单调同向，涨跌形状完整保留。
-//   代价是：价格的分位曲线在两端会变平（高位横着走），这是分位映射的固有特性，不是 bug。
-//   真实价格在悬停卡片和图例里给出，所以读数不受影响。
+//   ① 0~100 的网格线读不出价格的任何含义，左轴刻度等于变成假的；
+//   ② 上证 ~3800 与中证2000 ~3000 是两个量级，两者之间也没法共用一根价格轴。
+//   所以先归一化，再用最右侧单独一列「指数涨跌%」刻度 —— 两条线都是百分比，可以共用那根轴。
+//
+//   ⚠️ 基准是**显示区间**的第一个点，不是整个窗口的。所以缩放/平移时基准跟着走，
+//      「显示范围内第一个点」永远落在 0%（虚线）上。这与「45日5分钟线」面板里
+//      累计涨跌幅那张图是同一口径（那边是 intraday-zoom.js 的 norm(mode='cum')）。
+//   代价（必须说清）：纵轴高度不再能跨区间比较 —— 同一根高度，缩放到不同区间含义不同。
+//     真实收盘价与百分比在图例、悬停卡片里都给出。
+//   显示区间上下界按可见范围自适应（留白规则与 intraday-zoom.js 一致：至少 ±0.15%，否则跨度的 12%）。
 //
 // 交互与 K 线图保持一致：滚轮缩放（以光标为锚点）、拖拽平移、双击复位；触屏用 dzTouch。
 // 悬停显示该日的跌停家数（用户明确要求的），另附情绪分、乐观指数与严重度分。
@@ -32,16 +36,16 @@
   }
 
   // ---------------- 叠加的指数线 ----------------
-  // 每条线两个数组：raw = 真实收盘价（悬停/图例用），pos = 窗口内分位（画图用）。
-  // 分位用「严格小于的比例 + 相等的一半」算，遇到并列值不会偏向一侧。
+  // 每条线只存原始收盘价；纵坐标在**每次 render 时**按「当前显示区间的第一个点」现算 ——
+  // 基准随缩放/平移移动，这正是这个口径的意义（见文件头注释）。
   const LINES = (() => {
     const S = window.SENTIDX;
     if (!S?.dates?.length) return [];
     // 日期 → 下标，便于把散点图的日期映射到指数序列上
     const at = new Map(S.dates.map((d, i) => [d, i]));
     const defs = [
-      { key: 'sh', name: '上证指数', color: '#f0a24b' },
-      { key: 'csi2000', name: '中证2000', color: '#7c8cf8' },
+      { key: 'sh', name: '上证指数', short: '上证', color: '#f0a24b' },
+      { key: 'csi2000', name: '中证2000', short: '中证2000', color: '#7c8cf8' },
     ];
     const out = [];
     for (const def of defs) {
@@ -52,22 +56,14 @@
         return i == null || src[i] == null ? null : src[i];
       });
       if (raw.every((v) => v == null)) continue;
-      // 分位：在**整个窗口**的有效样本上算，与缩放无关 —— 缩放时只裁剪不重标
-      const valid = raw.filter((v) => v != null);
-      const sorted = [...valid].sort((a, b) => a - b);
-      const pos = raw.map((v) => {
-        if (v == null) return null;
-        let lo = 0, hi = 0;
-        for (const x of sorted) { if (x < v) lo++; else if (x === v) hi++; }
-        return ((lo + hi / 2) / sorted.length) * 100;
-      });
-      out.push({ ...def, raw, pos });
+      out.push({ ...def, raw, lastRaw: [...raw].reverse().find((v) => v != null) ?? null });
     }
     return out;
   })();
   const hasLines = LINES.length > 0;
-  // 有叠加线时底部要多留一行放图例，否则图例会压住横轴月份
+  // 有叠加线时：底部多留一行放图例，右侧多留一列放「指数涨跌%」轴
   const LEG = hasLines ? 15 : 0;
+  const PR = hasLines ? 64 : 30;
 
   const NS = 'http://www.w3.org/2000/svg';
   const mk = (t, a) => {
@@ -85,8 +81,9 @@
   host.appendChild(tip);
 
   const H = hasLines ? 168 : 150;
-  // 左右各留 30px 放刻度：左边读恐慌、右边读乐观
-  const P = { t: 16, r: 30, b: hasLines ? 36 : 20, l: 30 };
+  // 左侧 30px 放恐慌刻度；右侧放两列：贴图的是乐观指数（镜像读数），
+  // 最外一列是叠加指数的「相对显示区间首点的涨跌%」（两条线共用同一套百分比刻度）。
+  const P = { t: 16, r: PR, b: hasLines ? 36 : 20, l: 30 };
   let W = 500;
   let iw = W - P.l - P.r;
   const ih = H - P.t - P.b;
@@ -119,6 +116,11 @@
   let mouse = null;
   let dragging = false;
   let lastPx = 0;
+  // 叠加线的「相对显示区间首点」百分比：基准随缩放/平移变，所以每次 render 都要重算并留一份，
+  // 供图例与悬停卡片读数（否则它们算出来的数会和图上画的对不上）。
+  let pctSeries = []; // 每条线的百分比序列
+  let pctBase = [];   // 每条线的基准收盘价
+  let curPct = [];    // 可见区间末点的 { pct, raw, base }，图例用
 
   // 每个分组打上 data-g 标记：测试与后续维护都按标记找，不靠下标 ——
   // 之前加了「指数线」分组，下标整体后移，靠下标的测试立刻读错分组。
@@ -187,11 +189,55 @@
     gGrid.appendChild(capR);
 
     // ---- 指数线（画在散点之下）----
-    // 只画可见区间；分位是在整个窗口上算好的，所以缩放时线只被裁剪、不会被重新拉伸，
-    // 不会出现「放大后噪声被放大成剧烈波动」的错觉。
+    // 纵坐标 = **相对当前显示区间第一个点的涨跌%**，每次 render 现算：
+    //   基准随缩放/平移移动，所以「显示范围内第一个点」永远落在 0% 线上，
+    //   缩放到哪一段就看那一段的相对涨跌 —— 与「45日5分钟线」里累计涨跌幅那张图同一口径。
+    // 代价（必须说清）：纵轴位置不再能跨区间比较，同一根高度在不同缩放下含义不同；
+    //   真实点位与百分比都在图例和悬停卡片里给出。
     gLines.textContent = '';
     if (hasLines) {
-      for (const L of LINES) {
+      // 基准 = 显示区间内每条线的第一个有效值
+      const base = LINES.map((L) => {
+        for (let i = a; i <= b; i++) if (L.raw[i] != null) return L.raw[i];
+        return null;
+      });
+      // 百分比序列 + 可见范围内的上下界（两条线共用一套 % 刻度）
+      const pct = LINES.map((L, k) => (base[k] ? L.raw.map((v) => (v == null ? null : (v / base[k] - 1) * 100)) : null));
+      let lo = Infinity, hi = -Infinity;
+      for (const arr of pct) {
+        if (!arr) continue;
+        for (let i = a; i <= b; i++) {
+          const v = arr[i];
+          if (v == null) continue;
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+      }
+      if (!isFinite(lo)) { lo = -1; hi = 1; }
+      // 留白与 intraday-zoom.js 一致：至少 ±0.15%，否则按跨度的 12%
+      const pad = Math.max(0.15, (hi - lo) * 0.12);
+      const minV = lo - pad, maxV = hi + pad;
+      const yPct = (v) => P.t + ih - ((v - minV) / (maxV - minV)) * ih;
+
+      // 0% 基线：基准就在这条线上，不画出来读者无法校准。
+      // 基准日期写在**这条线旁边**而不是图例里 —— 图例右边放日期在窄屏（W≈240）会压到左边的条目上，
+      // 而这里正是读者需要它的位置（虚线本身就是「以显示区间首点为 0」这句话的落点）。
+      const bi0 = (() => { for (let i = a; i <= b; i++) if (pct.some((arr) => arr && arr[i] != null)) return i; return -1; })();
+      if (minV <= 0 && maxV >= 0) {
+        const y0 = yPct(0);
+        gLines.appendChild(mk('line', {
+          x1: P.l, x2: W - P.r, y1: +y0.toFixed(2), y2: +y0.toFixed(2),
+          stroke: '#6b7688', 'stroke-width': 0.7, 'stroke-dasharray': '4 3', opacity: 0.75,
+        }));
+        const t0 = mk('text', { x: P.l + 3, y: +(y0 - 2.5).toFixed(2), fill: '#6b7688', 'font-size': '8' });
+        t0.textContent = bi0 >= 0 ? `0%（基准 ${B[bi0].d}）` : '0%';
+        gLines.appendChild(t0);
+      }
+
+      for (let k = 0; k < LINES.length; k++) {
+        const L = LINES[k];
+        const arr = pct[k];
+        if (!arr) continue;
         let seg = [];
         const flush = () => {
           if (seg.length > 1) {
@@ -204,17 +250,43 @@
           seg = [];
         };
         for (let i = a; i <= b; i++) {
-          const p = L.pos[i];
-          if (p == null) { flush(); continue; } // 缺数据的日期断开，不要连成假线
-          seg.push([xOf(i, span), yOf(p)]);
+          const v = arr[i];
+          if (v == null) { flush(); continue; } // 缺数据的日期断开，不要连成假线
+          seg.push([xOf(i, span), yPct(v)]);
         }
         flush();
         // 末日一个小端点，方便一眼看出线画到哪
-        const lastI = (() => { for (let i = b; i >= a; i--) if (L.pos[i] != null) return i; return -1; })();
+        const lastI = (() => { for (let i = b; i >= a; i--) if (arr[i] != null) return i; return -1; })();
         if (lastI >= 0) {
-          gLines.appendChild(mk('circle', { cx: +xOf(lastI, span).toFixed(2), cy: +yOf(L.pos[lastI]).toFixed(2), r: 2, fill: L.color }));
+          gLines.appendChild(mk('circle', { cx: +xOf(lastI, span).toFixed(2), cy: +yPct(arr[lastI]).toFixed(2), r: 2, fill: L.color }));
         }
       }
+
+      // ---- 最右侧一列：涨跌% 刻度（只标上下界和 0，避免与左侧 5 条网格线打架）----
+      const capP = mk('text', { x: W - 2, y: P.t - 6, fill: '#9aa4b2', 'font-size': '8.5', 'text-anchor': 'end' });
+      capP.textContent = '指数涨跌%';
+      gLines.appendChild(capP);
+      const marks = [{ v: maxV, s: `${maxV >= 0 ? '+' : ''}${maxV.toFixed(1)}%` }, { v: minV, s: `${minV >= 0 ? '+' : ''}${minV.toFixed(1)}%` }];
+      if (minV <= 0 && maxV >= 0) marks.push({ v: 0, s: '0%' });
+      for (const m of marks) {
+        const t = mk('text', {
+          x: W - 2, y: +(yPct(m.v) + 3).toFixed(2),
+          fill: m.v === 0 ? '#6b7688' : '#9aa4b2', 'font-size': '8', 'text-anchor': 'end',
+        });
+        t.textContent = m.s;
+        gLines.appendChild(t);
+      }
+      // 图例与悬停也要用同一套算出来的百分比
+      pctSeries = pct;
+      pctBase = base;
+      curPct = LINES.map((L, k) => {
+        for (let i = Math.min(N - 1, b); i >= a; i--) if (pct[k] && pct[k][i] != null) return { pct: pct[k][i], raw: L.raw[i], base: base[k] };
+        return null;
+      });
+    } else {
+      pctSeries = [];
+      pctBase = [];
+      curPct = [];
     }
 
     // ---- 散点 ----
@@ -268,20 +340,20 @@
       gX.appendChild(tx);
     });
 
-    // ---- 图例：指数线的颜色 / 名称 / 最后一次可见的收盘价与分位 ----
-    // 读数跟着可见区间走（缩放后看到的就是那一段末值），真实价格始终给出，
-    // 所以分位映射没有牺牲可读性。
+    // ---- 图例：指数线的颜色 / 名称 / 可见区间末点的涨跌% 与真实收盘价 ----
+    // 纵轴含义变了（相对显示区间首点），所以图例必须把「从哪算起」和「现在多少」一起给出来。
     gLeg.textContent = '';
     if (hasLines) {
-      const compact = W < 400; // 窄屏只留色块和数值，省掉指数名
+      const compact = W < 430; // 窄屏省掉指数名
       const ly = H - 4;
       let lx = P.l;
-      for (const L of LINES) {
-        let li = -1;
-        for (let i = b; i >= a; i--) if (L.pos[i] != null) { li = i; break; }
-        if (li < 0) continue;
+      for (let k = 0; k < LINES.length; k++) {
+        const L = LINES[k];
+        const c = curPct[k];
+        if (!c) continue;
         gLeg.appendChild(mk('line', { x1: lx, x2: lx + 10, y1: ly - 3, y2: ly - 3, stroke: L.color, 'stroke-width': 1.8 }));
-        const label = `${compact ? '' : L.name + ' '}${Math.round(L.raw[li])}（分位 ${Math.round(L.pos[li])}）`;
+        // ⚠️ 窄屏只缩短名字，不能去掉 —— 否则图例只剩色块和数字，读者无从知道哪条线是哪个指数。
+        const label = `${compact ? L.short : L.name} ${c.pct >= 0 ? '+' : ''}${c.pct.toFixed(1)}%`;
         const t = mk('text', { x: lx + 13, y: ly, 'font-size': '8.5', fill: '#9aa4b2' });
         t.textContent = label;
         gLeg.appendChild(t);
@@ -313,13 +385,13 @@
       `<div><i style="background:${cOpt || '#4fb3c8'}"></i><span class="n">乐观指数</span><b>${opt.toFixed(1)}</b></div>` +
       `<div><i style="background:#ef4d5a"></i><span class="n">跌停家数</span><b>${r.dt}</b></div>` +
       `<div><i style="background:#39414f"></i><span class="n">严重度分</span><b>${r.score}</b></div>` +
-      // 叠加的指数：给出真实收盘价 + 窗口内分位（分位才是图上那条线的纵坐标）
-      LINES.map((L) => {
+      // 叠加的指数：真实收盘价 + 相对「显示区间首点」的涨跌%（后者才是图上那条线的纵坐标）
+      LINES.map((L, k) => {
         const v = L.raw[hover];
-        return v == null
-          ? ''
-          : `<div><i style="background:${L.color}"></i><span class="n">${L.name}</span><b>${v.toFixed(2)}</b>` +
-            `<span class="n" style="margin-left:4px">分位 ${Math.round(L.pos[hover])}</span></div>`;
+        const p = pctSeries[k]?.[hover];
+        if (v == null || p == null) return '';
+        return `<div><i style="background:${L.color}"></i><span class="n">${L.name}</span><b>${v.toFixed(2)}</b>` +
+          `<span class="n" style="margin-left:4px">${p >= 0 ? '+' : ''}${p.toFixed(1)}%</span></div>`;
       }).join('');
     tip.style.display = '';
     tip.style.left = '0px';
