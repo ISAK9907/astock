@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
-import { sinaQuote, sleep } from './sources.mjs';
+import { sinaQuote, sleep, emQuote } from './sources.mjs';
 import { TH, decide } from './signal.mjs';
 import { globalQuotes, forecastGap } from './global-quote.mjs';
 import { push, loadConfig } from './push-bark.mjs';
@@ -58,7 +58,16 @@ try {
 
 // ---------- 3. A 股集合竞价结果 ----------
 const SYM = { sh: 'sh000001', szcz: 'sz399001', cyb: 'sz399006', hs300: 'sh000300' };
+// 中证2000（932000）是 CSI 独有指数，新浪 hq 取不到（sh932000 返回空），走东财 push2。
+// 不补这一路的话，daily-long 里的第 5 个指数在盘前表里会有一列恒为「—」，看着像坏了。
+// ⚠️ 但东财会整段封（UND_ERR_SOCKET，一封几小时），所以再挂一层**ETF 代理兜底**：
+//    sh563300 是中证2000ETF华泰柏瑞，看板「45日5分钟线」里本来就用它代表中证2000（同一口径）。
+//    代理的**价格量级与指数差 3 个数量级**，所以只取它自己的「开/昨收」算跳空，
+//    绝不拿它去和指数收盘价比（那个 stale 检查对代理无意义，必须跳过，否则天天误报）。
+const EM_SYM = { csi2000: '2.932000' };
+const PROXY_SYM = { csi2000: 'sh563300' };
 let q = null, qDate = '';
+let emq = {};
 for (let i = 1; i <= 5; i++) {
   try {
     q = await sinaQuote(Object.values(SYM));
@@ -73,6 +82,22 @@ for (let i = 1; i <= 5; i++) {
     await sleep(20000);
   }
 }
+try {
+  emq = await emQuote(Object.values(EM_SYM));
+} catch (e) {
+  log(`  ! 东财实时行情不可用（${String(e.message).slice(0, 40)}），中证2000 改用 ETF 代理`);
+}
+// ETF 代理只在指数行情拿不到时才取，且复用同一次新浪调用
+let proxyQ = {};
+if (Object.keys(EM_SYM).some((k) => !emq[EM_SYM[k]])) {
+  try {
+    const pq = await sinaQuote(Object.values(PROXY_SYM));
+    for (const sym of Object.values(PROXY_SYM)) if (pq[sym]?.open > 0) proxyQ[sym] = pq[sym];
+    if (Object.keys(proxyQ).length) log(`  中证2000 用 ETF 代理 ${Object.values(PROXY_SYM).join(',')}（东财不可用）`);
+  } catch (e) {
+    log(`  ! ETF 代理行情也失败：${e.message}`);
+  }
+}
 const shQ = q?.[SYM.sh];
 const marketOpen = !!(shQ && shQ.open > 0 && qDate === localToday());
 if (!marketOpen && !FORCE) {
@@ -82,18 +107,32 @@ if (!marketOpen && !FORCE) {
 }
 
 // ---------- 4. 逐指数决策 ----------
+// 报价统一按指数 key 索引：新浪的 4 个 + 中证2000（东财指数 → 新浪 ETF 代理），后面只认 key。
+const QUOTES = {};
+for (const [k, sym] of Object.entries(SYM)) if (q?.[sym]) QUOTES[k] = { ...q[sym], source: '新浪 hq' };
+for (const [k, secid] of Object.entries(EM_SYM)) {
+  const e = emq[secid];
+  // 东财不给日期，用同一次运行里拿到的 A 股行情日期兜底（同一时刻取的数据）
+  if (e && e.open > 0) QUOTES[k] = { ...e, date: qDate, source: '东财 push2' };
+}
+for (const [k, sym] of Object.entries(PROXY_SYM)) {
+  if (QUOTES[k]) continue; // 已经有真实指数行情
+  const px = proxyQ[sym];
+  if (px && px.open > 0) QUOTES[k] = { ...px, source: 'ETF 代理(sh563300)', proxy: true };
+}
+
 const rows = [];
 for (const s of state.states) {
-  const sym = SYM[s.key];
-  const qt = sym ? q[sym] : null;
+  const qt = QUOTES[s.key];
   let gap = null, stale = false;
   if (qt && qt.open > 0 && qt.prevClose > 0) {
     gap = (qt.open / qt.prevClose - 1) * 100;
-    if (s.close && Math.abs(qt.prevClose - s.close) / s.close > 0.002) stale = true;
+    // 代理的价格量级和指数不同，比不得；只有真实指数行情才做这个一致性检查
+    if (!qt.proxy && s.close && Math.abs(qt.prevClose - s.close) / s.close > 0.002) stale = true;
   }
   const dec = decide(s, gap == null ? 0 : gap);
-  rows.push({ key: s.key, name: s.name, retT: s.retT, amtRatio: s.amtRatio, gap, stale, decision: dec });
-  log(`  ${s.name.padEnd(8)} T日 ${pad(s.retT)}  竞价 ${gap == null ? '—' : pad(gap)}  → ${dec.action.label}`);
+  rows.push({ key: s.key, name: s.name, retT: s.retT, amtRatio: s.amtRatio, gap, stale, decision: dec, source: qt?.source ?? '无实时源', proxy: !!qt?.proxy });
+  log(`  ${s.name.padEnd(8)} T日 ${pad(s.retT)}  竞价 ${gap == null ? '—' : pad(gap)}  → ${dec.action.label}${qt?.proxy ? '   [ETF 代理]' : ''}`);
 }
 
 // ---------- 5. 推送正文 ----------

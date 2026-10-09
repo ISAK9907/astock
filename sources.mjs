@@ -321,6 +321,39 @@ export async function sinaQuote(symbols) {
   return out;
 }
 
+/**
+ * 东方财富 push2 实时行情（单只，返回昨收/开/最新）。
+ * 为什么需要它：**中证2000（932000）这类 CSI 独有指数新浪 hq 取不到**（`sh932000` 返回空），
+ * 但东财 push2 有真实行情（kline 那条路径常被封，quote 这条稳定得多）。
+ * ⚠️ f43/f46/f60 是**按标的缩放的整数**，小数位数在 f59 里（中证2000 是 2 位、ETF 是 3 位），
+ *    不除这个因子就会得到 306400 这种值。
+ */
+export async function emQuote(secids) {
+  const out = {};
+  for (const secid of secids) {
+    const url =
+      `https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}` +
+      `&fields=f43,f46,f57,f58,f59,f60&ut=fa5fd1943c7b386f172d6893dbfba10b`;
+    try {
+      const j = await fetchJson(url, { headers: { Referer: 'https://quote.eastmoney.com/' }, retries: 2 });
+      const d = j?.data;
+      if (!d || d.f43 == null) continue;
+      const k = Math.pow(10, d.f59 ?? 2);
+      out[secid] = {
+        name: d.f58 ?? '',
+        code: String(d.f57 ?? ''),
+        prevClose: d.f60 == null ? null : d.f60 / k,
+        open: d.f46 == null ? null : d.f46 / k,
+        price: d.f43 == null ? null : d.f43 / k,
+      };
+    } catch {
+      /* 单个失败不影响其他 */
+    }
+  }
+  if (!Object.keys(out).length) throw new Error('东财 push2 实时行情返回空');
+  return out;
+}
+
 /** 东方财富 —— 涨停/跌停股池等独有数据（易限流） */
 export const eastmoney = {
   label: 'eastmoney',
