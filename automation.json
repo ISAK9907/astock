@@ -1,17 +1,17 @@
 {
- "generatedAt": "2026-10-09T01:27:20.076Z",
- "now": "2026-10-09 09:27",
- "isTradingDay": true,
+ "generatedAt": "2026-10-10T02:47:57.208Z",
+ "now": "2026-10-10 10:47",
+ "isTradingDay": false,
  "daily": {
   "label": "盘后日更",
   "schedule": "工作日 15:40（本机）",
   "available": true,
   "lastOk": "2026-10-08 15:43",
   "lastDate": "2026-10-08",
-  "expected": "2026-10-08",
-  "behind": 0,
+  "expected": "2026-10-09",
+  "behind": 1,
   "lastScheduledOk": "2026-10-08 15:43",
-  "lastScheduledBehind": 0,
+  "lastScheduledBehind": 1,
   "lastManualOk": null,
   "lastRecord": {
    "at": "2026-10-08T07:43:42.498Z",
@@ -28,7 +28,7 @@
    "interrupted": false,
    "evidence": "rc=0 source=scheduled"
   },
-  "ok": true,
+  "ok": false,
   "note": "45日5分钟线:ok 事件日历:ok 日线数据:ok 涨跌停/成交额:ok 长历史日线:ok 跌停三维:ok 情绪/回测:ok 统计重算:ok 开盘情景:ok 盘中跌停曲线:ok 全球市场日线:ok 生成看板:ok 推送手机:ok 历史备份:ok"
  },
  "premarket": {
@@ -37,7 +37,7 @@
   "available": true,
   "lastOk": "2026-10-09 09:26",
   "lastDate": "2026-10-09",
-  "expected": "2026-10-08",
+  "expected": "2026-10-09",
   "behind": 0,
   "lastScheduledOk": "2026-10-09 09:26",
   "lastScheduledBehind": 0,
@@ -58,7 +58,7 @@
    "evidence": "rc=0 source=scheduled"
   },
   "ok": true,
-  "note": "  – 推送手机           未配置（不需要推送就保持这样）"
+  "note": ""
  },
  "cloud": {
   "label": "云端兜底",

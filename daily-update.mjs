@@ -44,6 +44,8 @@ const SKIP_INTRADAY = process.argv.includes('--no-intraday');
 // 云端（GitHub Actions）跑时用 --no-backup：backup.mjs 是给本机留历史快照的，
 // 在 CI 里提交由 workflow 自己控制（提交信息、author、推送时机都不一样）。
 const SKIP_BACKUP = process.argv.includes('--no-backup');
+// 收盘推送归档是否已写（见步骤循环：在「生成看板」之前写，保证当天就上页面）
+let pushArchived = false;
 const steps = [
   ['45日5分钟线', 'fetch-trends-m5.mjs'],
   ['事件日历', 'fetch-events.mjs'],
@@ -85,6 +87,14 @@ console.log(`===== 盘后日更 ${new Date().toLocaleString('zh-CN')} =====`);
   }
 }
 for (const [name, script] of steps) {
+  // ⚠️ 收盘推送必须在「生成看板」**之前**写好归档。
+  //    原来这段代码在步骤循环之后（生成看板 → 部署 → 才写归档），后果是：
+  //    当天收盘推送要**等到下一次构建**（次日 09:26 盘前）才会出现在页面上 ——
+  //    晚上打开看板回看当天推送是空的。2026-10-09 就是这么被误认为「没有推送盘后」。
+  if (script === 'build-dashboard.mjs' && !pushArchived) {
+    pushArchived = true;
+    await buildAndArchivePush();
+  }
   // 「盘中跌停曲线」是增量的，但一旦积压就很重：它要先全市场扫一遍（约 5200 次调用）
   // 找出各标记日的跌停股，再按「天 × 跌停股数」取 5 分钟线。标记日从 15 涨到 37 之后
   // 积压 22 天 ≈ 1 万次调用 / 50~90 分钟。单步超时 40 分钟会在中途杀掉它，
@@ -130,6 +140,9 @@ console.log(`\n完成 ${results.length - failed.length}/${results.length}${faile
 }
 
 // ---------- 汇总推送内容 ----------
+// 抽成函数：必须能在「生成看板」之前被调用（见步骤循环里的说明），
+// 否则收盘推送要等下一次构建才上页面。
+async function buildAndArchivePush() {
 const read = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
 const md = read('market-data.json', []);
 const last = md.at(-1), prev = md.at(-2);
@@ -152,7 +165,12 @@ if (today && daily[today]) {
   lines.push(`恐慌情绪 ${srec.sent ?? '—'}/100${drec.type ? ` · ${drec.type}` : ''}`);
   lines.push(`跌停市值占比 ${num(drec.cap, 2)}% · 权重股 ${drec.mem ?? '—'} 只`);
 }
-if (failed.length) lines.push(`⚠️ 失败 ${failed.length} 项: ${failed.map((f) => f.name).join('、')}`);
+// ⚠️ 这里**不能**用外层那个 `failed`：本函数在步骤循环里、构建之前就被调用，
+//    而外层的 `const failed = results.filter(...)` 定义在循环之后 ——
+//    引用它会抛暂时性死区 ReferenceError（踩过一次，整个日更直接崩掉）。
+//    就地按当前 results 算：此刻正好是「除生成看板之外」的完成情况。
+const failedNow = results.filter((r) => !r.ok);
+if (failedNow.length) lines.push(`⚠️ 失败 ${failedNow.length} 项: ${failedNow.map((f) => f.name).join('、')}`);
 
 // ---------- 最新事件提醒 ----------
 const evs = read('events.json', {})?.events ?? [];
@@ -223,6 +241,7 @@ if (SKIP_PUSH) {
     results.push({ name: '推送手机', ok: !!r.ok, ms: Date.now() - t0, err: r.ok ? undefined : r.message });
   }
 }
+}
 
 // ---------- 重建实时信号 Worker ----------
 // 日更重写了 signal-state.json，而 Worker 把它内联在包里 —— 不重建的话，
@@ -259,13 +278,25 @@ if (SKIP_PUSH) {
     console.log('  – 历史备份      跳过（--no-backup，由 CI 自行提交）');
     results.push({ name: '历史备份', ok: true, skipped: true, ms: 0 });
   } else {
-    try {
-      execFileSync('node', ['backup.mjs', `日更 ${today ?? ''}`.trim()], { stdio: 'inherit', timeout: 2 * 60 * 1000 });
-      results.push({ name: '历史备份', ok: true, ms: Date.now() - t0 });
-    } catch (e) {
-      console.log(`  ! 历史备份失败 exit=${e.status ?? '?'}（不影响日更，但请留意）`);
-      results.push({ name: '历史备份', ok: false, ms: Date.now() - t0 });
+    // 备份是纯本地 git 操作（实测带改动约 0.3s），但 2026-10-10 那次跑满 2 分钟超时被杀、
+    // 子进程一句输出都没有 —— 属偶发卡死。所以：超时放宽 + 失败重试一次 + 打出 signal，
+    // 免得「历史快照」这种不可再生的东西因为一次抖动就丢掉。
+    let backupErr = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        execFileSync('node', ['backup.mjs', `日更 ${today ?? ''}`.trim()], { stdio: 'inherit', timeout: 5 * 60 * 1000 });
+        results.push({ name: '历史备份', ok: true, ms: Date.now() - t0 });
+        backupErr = null;
+        break;
+      } catch (e) {
+        backupErr = e;
+        console.log(
+          `  ! 历史备份第 ${attempt} 次失败 status=${e.status ?? '?'} signal=${e.signal ?? '-'} code=${e.code ?? '-'}（${String(e.message).slice(0, 70)}）`,
+        );
+        if (attempt < 2) await sleep(5000);
+      }
     }
+    if (backupErr) results.push({ name: '历史备份', ok: false, ms: Date.now() - t0 });
   }
 }
 

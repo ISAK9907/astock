@@ -45,16 +45,19 @@ jobs:
       - name: 检查本机今天是否已经跑过盘前
         id: fresh
         run: |
+          # 只认 kind=premarket 的今天构建 —— 盘前这一路要判断的是「本机盘前跑没跑」。
+          # 之前写成「今天有过任何构建就跳过」，那样早上只要有人手动 rebuild 一次
+          # （kind 默认 daily），云端盘前就会被误判成已完成。
           stamp=$(grep -o '"generatedAt":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
           kind=$(grep -o '"kind":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
           d_bj=$(date +%F); d_utc=$(date -u +%F)
-          echo "version.json generatedAt=${stamp:-（读取失败）} kind=${kind:-（无）}  今天(北京)=$d_bj 今天(UTC)=$d_utc  force=${{ inputs.force }}"
+          echo "version.json generatedAt=${stamp:-读取失败} kind=${kind:-无}  今天(北京)=$d_bj 今天(UTC)=$d_utc  force=${{ inputs.force }}"
           if [ '${{ inputs.force }}' = 'true' ]; then
             echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 手动指定 force，照常在云端运行'
-          elif [ -n "$stamp" ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
-            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天已经构建过看板（盘前或日更），云端跳过'
+          elif [ "$kind" = 'premarket' ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天的盘前已经跑过，云端跳过'
           else
-            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 本机今天没跑盘前，云端接手（兜底）'
+            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo "→ 本机今天没跑盘前（kind=${kind:-无}），云端接手（兜底）"
           fi
 
       - uses: actions/setup-node@v4

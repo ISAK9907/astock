@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 build-worker.mjs 自动生成，请勿直接编辑。
 // 改判定逻辑请改 signal.mjs / global-quote.mjs；改 Worker 入口请改 worker/handler.js。
-// 生成时间：2026-10-08T07:43:41.829Z
-// 内联的状态文件：T=2026-10-08（generatedAt=2026-10-08T07:43:13.933Z）
+// 生成时间：2026-10-10T02:46:13.357Z
+// 内联的状态文件：T=2026-10-09（generatedAt=2026-10-10T02:45:20.670Z）
 
 // ===== signal.mjs =====
 // 盘前信号核心逻辑（被 build-dashboard / serve-dashboard / daily-update 共用）
@@ -134,33 +134,94 @@ async function getJson(url) {
   } finally { clearTimeout(t); }
 }
 
+const localIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+async function getText(url, referer) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 10000);
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': UA, Referer: referer }, signal: ac.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.text();
+  } finally { clearTimeout(t); }
+}
+
+/**
+ * 东财 push2 被封时的兜底源。**覆盖不全，这是有意的** —— 拿不到的项就留 null，
+ * 宁可少给一条依据，也不要用别的东西冒充。
+ *   · 腾讯 qt.gtimg.cn `us.INX` —— 标普500，现价/昨收/今开/涨跌幅齐全（字段 3/4/5/32）
+ *   · 新浪 hq.sinajs.cn `hf_GC` —— COMEX黄金，字段 [0]=现价 [7]=昨收
+ *   · 新浪 `int_nikkei` —— 日经，只有现价+涨跌额，**推不出今开**，所以只用于展示，
+ *     不参与跳空模型（模型吃的是「今开/昨收」，用现价冒充会静默改变输入口径）
+ * 韩国 KOSPI、台湾加权在本地拿不到（Yahoo 家里 403），故兜底时 asia 会算不出来 →
+ * forecastGap 自动退化成「仅美股」，那正是文档里写好的降级路径。
+ */
+async function fallbackQuotes() {
+  const out = { spx: null, kospi: null, nikkei: null, twii: null, gold: null, dxy: null };
+  try {
+    const t = await getText('https://qt.gtimg.cn/q=us.INX', 'https://gu.qq.com/');
+    const f = (/="([^"]*)"/.exec(t)?.[1] ?? '').split('~');
+    const num = (v) => (v == null || v === '' || v === '-' ? null : +v);
+    if (num(f[3])) {
+      out.spx = { name: '标普500', price: num(f[3]), prevClose: num(f[4]), open: num(f[5]), chg: num(f[32]), date: '', asOf: '', src: '腾讯' };
+    }
+  } catch { /* 单个源失败不影响其他 */ }
+  try {
+    const t = await getText('https://hq.sinajs.cn/list=hf_GC', 'https://finance.sina.com.cn/');
+    const f = (/="([^"]*)"/.exec(t)?.[1] ?? '').split(',');
+    const price = +f[0], prev = +f[7];
+    if (price > 0 && prev > 0) {
+      out.gold = { name: 'COMEX黄金', price, prevClose: prev, open: null, chg: (price / prev - 1) * 100, date: f[12] ?? '', asOf: f[6] ?? '', src: '新浪' };
+    }
+  } catch { /* 同上 */ }
+  try {
+    const t = await getText('https://hq.sinajs.cn/list=int_nikkei', 'https://finance.sina.com.cn/');
+    const f = (/="([^"]*)"/.exec(t)?.[1] ?? '').split(',');
+    const price = +f[1], diff = +f[2];
+    if (price > 0) {
+      // 只有涨跌额 → 反推昨收；open 留 null（没有今开，不进模型）
+      out.nikkei = { name: '日经225', price, prevClose: price - diff, open: null, chg: +f[3], date: localIso(new Date()), asOf: '', src: '新浪(无今开)' };
+    }
+  } catch { /* 同上 */ }
+  if (!Object.values(out).some(Boolean)) throw new Error('兜底源也全部失败');
+  return out;
+}
+
 /** 取全球实时行情。东财这些字段都是 ×100 的整数（指数点位 ×100，涨跌幅 ×100）
  *  注意：ulist 里「今开」是 f17（不是 f46，f46 只在单品种 stock/get 里返回） */
 async function globalQuotes() {
   const ids = Object.values(GLOBAL_SECIDS).map(([s]) => s).join(',');
   const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${ids}&fields=f2,f3,f12,f14,f17,f18,f86,f124&ut=${UT}`;
-  const j = await getJson(url);
-  const out = {};
-  for (const [key, [secid, name]] of Object.entries(GLOBAL_SECIDS)) {
-    const d = (j?.data?.diff ?? []).find((x) => String(x.f12) === secid.split('.')[1]);
-    if (!d) { out[key] = null; continue; }
-    const px = (v) => (v == null || v === '-' ? null : v / 100);
-    const ts = d.f124 || d.f86 || 0;
-    out[key] = {
-      name,
-      price: px(d.f2),
-      chg: d.f3 == null || d.f3 === '-' ? null : d.f3 / 100, // 当日涨跌幅 %
-      prevClose: px(d.f18),
-      open: px(d.f17),
-      asOf: ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '',
-      date: ts ? localIso(new Date(ts * 1000)) : '',
-    };
+  try {
+    const j = await getJson(url);
+    const out = {};
+    for (const [key, [secid, name]] of Object.entries(GLOBAL_SECIDS)) {
+      const d = (j?.data?.diff ?? []).find((x) => String(x.f12) === secid.split('.')[1]);
+      if (!d) { out[key] = null; continue; }
+      const px = (v) => (v == null || v === '-' ? null : v / 100);
+      const ts = d.f124 || d.f86 || 0;
+      out[key] = {
+        name,
+        price: px(d.f2),
+        chg: d.f3 == null || d.f3 === '-' ? null : d.f3 / 100, // 当日涨跌幅 %
+        prevClose: px(d.f18),
+        open: px(d.f17),
+        asOf: ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '',
+        date: ts ? localIso(new Date(ts * 1000)) : '',
+        src: '东财 push2',
+      };
+    }
+    if (!Object.values(out).some(Boolean)) throw new Error('东财全球行情返回空');
+    return out;
+  } catch (e) {
+    // 东财 push2 会整段封（UND_ERR_SOCKET，一封几小时），封住时不能把「预判跳空」整段丢掉
+    console.log(`  ! 东财 push2 全球行情不可用（${String(e.cause?.code ?? e.message).slice(0, 30)}），转兜底源`);
+    const fb = await fallbackQuotes();
+    const got = Object.entries(fb).filter(([, v]) => v).map(([k, v]) => `${k}(${v.src})`);
+    console.log(`  ! 兜底只取到：${got.join(' ')} —— 韩国/台湾在本地拿不到，跳空预判会退化为「仅美股」`);
+    return fb;
   }
-  if (!Object.values(out).some(Boolean)) throw new Error('东财全球行情返回空');
-  return out;
 }
-
-const localIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** 由全球行情推算 A 股跳空预判（无未来信息：美股已收盘、亚洲已开盘） */
 function forecastGap(q) {
@@ -186,8 +247,11 @@ function forecastGap(q) {
     basis = `亚洲早盘${asiaN < 3 ? `（${asiaN}/3 家已开盘）` : ''}`;
   } else if (us != null) {
     // 亚洲未开盘时，退化为只用美股（分桶经验：跌1%→A股约-0.35%，涨1%→约+0.14%）
+    // ⚠️ 「亚洲未开盘」和「亚洲开盘价取不到」是两回事，不能都写成前者 ——
+    //    兜底源（腾讯/新浪 int_*）拿不到今开，但那时亚洲明明已经开着了。
+    const asiaSeen = ['kospi', 'nikkei', 'twii'].some((k) => q[k]);
     predicted = us < 0 ? us * 0.349 : us * 0.142;
-    basis = '仅美股（亚洲未开盘）';
+    basis = asiaSeen ? '仅美股（亚洲开盘价取不到）' : '仅美股（亚洲未开盘）';
   }
 
   // 方向读数：基于一致率
@@ -212,7 +276,7 @@ function forecastGap(q) {
 
 
 // ===== signal-state.json（内联）=====
-const STATE = {"generatedAt":"2026-10-08T07:43:13.933Z","T":"2026-10-08","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-10-08","retT":-0.7882483687688513,"amtRatio":0.9535407702234774,"close":3811.904},{"key":"szcz","name":"深证成指","date":"2026-10-08","retT":-2.0696063353823235,"amtRatio":0.9136715280724556,"close":12620.897},{"key":"cyb","name":"创业板指","date":"2026-10-08","retT":-3.1455882728177453,"amtRatio":0.9426488218464718,"close":3036.657},{"key":"hs300","name":"沪深300","date":"2026-10-08","retT":-1.0864646297749747,"amtRatio":0.9958097499173724,"close":4310.276}]};
+const STATE = {"generatedAt":"2026-10-10T02:45:20.670Z","T":"2026-10-09","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-10-09","retT":0.0495028206376702,"amtRatio":1.0459850671773134,"close":3813.791},{"key":"szcz","name":"深证成指","date":"2026-10-09","retT":0.1660816976796431,"amtRatio":1.0663962610919373,"close":12641.858},{"key":"cyb","name":"创业板指","date":"2026-10-09","retT":0.21991288446472357,"amtRatio":1.0995209975171794,"close":3043.335},{"key":"hs300","name":"沪深300","date":"2026-10-09","retT":0.1619153854648836,"amtRatio":1.1108597937885825,"close":4317.255},{"key":"csi2000","name":"中证2000","date":"2026-10-09","retT":0.04242819843343071,"amtRatio":1.0329519013258674,"close":3065.3}]};
 
 // ===== worker/handler.js =====
 // Cloudflare Worker 的 /signal 处理器 —— 从 serve-dashboard.mjs 原样搬过来。

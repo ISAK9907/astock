@@ -8,42 +8,14 @@
 //    排除（*.log），所以云端构建时读不到 —— 那时面板会明确写「本机日志不可用」，
 //    而不是假装一切正常。
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { OFFICIAL } from './holidays.mjs';
+import { OFFICIAL, isTradingDay, lastTradingDayOnOrBefore, tradingDaysBetween } from './holidays.mjs';
 
 const now = new Date();
 const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const dayDiff = (a, b) => Math.round((new Date(`${a}T00:00:00`) - new Date(`${b}T00:00:00`)) / 864e5);
 
-/** 是否交易日：非周末，且不在官方休市区间 [from, to) 内 */
-function isTradingDay(dIso) {
-  const d = new Date(`${dIso}T00:00:00`);
-  const wd = d.getDay();
-  if (wd === 0 || wd === 6) return false;
-  for (const h of OFFICIAL) if (dIso >= h.from && dIso < h.to) return false;
-  return true;
-}
-/** 往前找最近一个交易日（含当天） */
-function lastTradingDayOnOrBefore(dIso) {
-  let d = new Date(`${dIso}T00:00:00`);
-  for (let i = 0; i < 30; i++) {
-    const s = iso(d);
-    if (isTradingDay(s)) return s;
-    d.setDate(d.getDate() - 1);
-  }
-  return null;
-}
-/** 统计 (from, to] 之间有多少个交易日 —— 即「本该跑几次」 */
-function tradingDaysBetween(fromIso, toIso) {
-  let n = 0;
-  const d = new Date(`${fromIso}T00:00:00`);
-  d.setDate(d.getDate() + 1);
-  while (iso(d) <= toIso) {
-    if (isTradingDay(iso(d))) n++;
-    d.setDate(d.getDate() + 1);
-  }
-  return n;
-}
+// 交易日判定统一由 holidays.mjs 提供（此前这里有一份私有实现，容易和别处不一致）
 
 /**
  * 结构化运行记录 runs.jsonl（由启动器调用 record-run.mjs 写入）。
@@ -203,13 +175,17 @@ const out = {
   premarket: health('premarket.log', preExpected, '工作日 09:26（本机）', '盘前更新', /\] OK\b/, 'premarket', runs),
   cloud: { label: '云端兜底', schedule: '工作日 15:50（GitHub Actions）', note: '本机没跑成时由它接手' },
 };
+// 注意：「看板数据是否落后」这条**不在这里算**。
+// 本脚本在 build-dashboard 之前跑，这时 version.json 还是**上一次发布**的，
+// 拿它判断会把「正在生成的这次更新」误判成落后。那条判断放在 build-dashboard.mjs 里，
+// 用这次构建自己的数据日期（last.date）算，才准确。
 writeFileSync('automation.json', JSON.stringify(out, null, 1), 'utf8');
 
 const line = (h) => {
   if (!h.available) return `${h.label}: ${h.note}`;
   const w =
     h.behind > 0
-      ? `⚠️ 数据落后 ${h.behind} 个交易日`
+      ? `⚠️ 计划任务未跑成（落后 ${h.behind} 个交易日）`
       : h.manualOnly
         ? `⚠️ 数据是新的，但来自手动补跑；计划任务最后一次成功 ${h.lastScheduledOk ?? '（没有记录）'}`
         : '✓ 正常';

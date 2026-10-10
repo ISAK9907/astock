@@ -34,6 +34,51 @@ export function nextHoliday(todayIso) {
   return null;
 }
 
+// ---------------- 交易日判定（官方休市日历 + 周末）----------------
+// 放在这里而不是各脚本各写一份：判定「数据落不落后」全靠它，
+// 一旦有第二份实现，两处对「哪天算交易日」不一致就会互相打架。
+/** 是否交易日：非周末，且不在官方休市区间 [from, to) 内 */
+export function isTradingDay(dIso) {
+  const wd = new Date(`${dIso}T00:00:00`).getDay();
+  if (wd === 0 || wd === 6) return false;
+  return !OFFICIAL.some((h) => dIso >= h.from && dIso < h.to);
+}
+
+/** 往前找最近一个交易日（含当天）；找不到返回 null */
+export function lastTradingDayOnOrBefore(dIso) {
+  const d = new Date(`${dIso}T00:00:00`);
+  for (let i = 0; i < 40; i++) {
+    if (isTradingDay(iso(d))) return iso(d);
+    d.setDate(d.getDate() - 1);
+  }
+  return null;
+}
+
+/** 统计 (fromIso, toIso] 之间有多少个交易日 —— 即「本该跑几次」 */
+export function tradingDaysBetween(fromIso, toIso) {
+  let n = 0;
+  const d = new Date(`${fromIso}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  while (iso(d) <= toIso) {
+    if (isTradingDay(iso(d))) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+
+/**
+ * 当前「应该已经拿到」的最新收盘日。
+ * 交易日 15:30 之前当天还没有收盘数据，所以算到上一个交易日。
+ * @param {number} [nowMinutes] 当天已过的分钟数（默认按当前时间）
+ */
+export function expectedCloseDate(now = new Date()) {
+  const today = iso(now);
+  const mins = now.getHours() * 60 + now.getMinutes();
+  if (isTradingDay(today) && mins >= 15 * 60 + 30) return today;
+  const y = new Date(now.getTime() - 864e5);
+  return lastTradingDayOnOrBefore(iso(y));
+}
+
 /** 从指数日线反推历史休市区间（工作日却无行情 = 休市） */
 export function deriveHistorical(bars) {
   const have = new Set(bars.map((b) => b.d));

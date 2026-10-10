@@ -44,19 +44,34 @@ jobs:
       - name: 检查本机今天是否已经跑过「日更」
         id: fresh
         run: |
-          # 看 version.json 而不是 index.html：需要同时知道「什么时候构建的」和
-          # 「这是盘前构建还是盘后日更构建」。只看日期的话，早上 09:26 的盘前构建
-          # 会让这次日更误判成「今天已经更过了」而跳过 —— 当天收盘数据就永远进不来。
+          # 看 version.json 而不是 index.html。要同时满足三个条件才允许跳过：
+          #   ① kind=daily      —— 盘前构建（kind=premarket）不算数
+          #   ② date=今天        —— **关键**：version.json 的 date 是「数据截至哪一天」。
+          #      只看到「今天有过一次 daily 构建」是不够的：2026-10-09 就是栽在这里 ——
+          #      那天早上 09:31 手动跑过一次 build-dashboard（默认 kind=daily），
+          #      version.json 记的是 kind=daily、generatedAt=当天，但 date 还是 10-08
+          #      （根本没含 10-09 的收盘）。于是云端认定「本机更过了」直接跳过，
+          #      而同一天本机 15:40 的日更又被中途杀掉 → **10-09 盘后彻底没有推送**。
+          #   ③ generatedAt 是今天 —— 防止上一天留下的 date=今天 的构建
           stamp=$(grep -o '"generatedAt":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
           kind=$(grep -o '"kind":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
+          ddate=$(grep -o '"date":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
           d_bj=$(date +%F); d_utc=$(date -u +%F)
-          echo "version.json generatedAt=${stamp:-（读取失败）} kind=${kind:-（无）}  今天(北京)=$d_bj 今天(UTC)=$d_utc  force=${{ inputs.force }}"
+          echo "version.json generatedAt=${stamp:-读取失败} kind=${kind:-无} date=${ddate:-无}"
+          echo "今天(北京)=$d_bj 今天(UTC)=$d_utc  force=${{ inputs.force }}"
           if [ '${{ inputs.force }}' = 'true' ]; then
             echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 手动指定 force，照常在云端运行'
-          elif [ "$kind" = 'daily' ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
-            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天的日更已经跑过，云端跳过（本机为主）'
+          elif [ "$kind" = 'daily' ] \
+            && { [ "$ddate" = "$d_bj" ] || [ "$ddate" = "$d_utc" ]; } \
+            && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo "→ 本机今天的日更已跑过且含当日收盘（date=$ddate），云端跳过"
           else
-            echo "fresh=false" >> "$GITHUB_OUTPUT"; echo "→ 本机今天还没跑日更（kind=${kind:-无}），云端接手（兜底）"
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            if [ "$ddate" != "$d_bj" ] && [ "$ddate" != "$d_utc" ]; then
+              echo "→ 本机这次构建的数据只到 $ddate（不含今天），视为没跟上，云端接手"
+            else
+              echo "→ 本机今天还没跑日更（kind=${kind:-无}），云端接手"
+            fi
           fi
 
       - uses: actions/setup-node@v4

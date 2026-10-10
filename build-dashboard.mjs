@@ -90,8 +90,13 @@ EVENTS = EVENTS.map((e) => ({ ...e, days: days(e.date), endDays: days(e.endDate 
 const _today = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(NOW.getDate()).padStart(2, '0')}`;
 let HOL = null;
 let HOLSTAT = null;
+// 交易日助手：只有官方日历这一份实现（holidays.mjs），别处不再各写一份
+let HOL_EXPECTED = null;
+let tradingDaysBetween = () => 0;
 try {
   const m = await import('./holidays.mjs');
+  HOL_EXPECTED = m.expectedCloseDate ? m.expectedCloseDate(NOW) : null;
+  tradingDaysBetween = m.tradingDaysBetween ?? tradingDaysBetween;
   const nh = m.nextHoliday(_today);
   HOLSTAT = m.holidayStats('daily-long.json');
   // 把「下一个休市」和「下下个休市」作为倒计时卡片并入事件流
@@ -261,6 +266,24 @@ const intra = intradayChart();
 const zoomJs = readFileSync('intraday-zoom.js', 'utf8');
 const crosshairJs = readFileSync('crosshair.js', 'utf8');
 const last = data.at(-1), prev = data.at(-2);
+
+// 状态带用：本页数据到底落不落后。
+// 放在这里（而不是 analyze-automation.mjs）是因为要拿**这次构建自己的数据日期**；
+// 那边在构建之前跑，version.json 还是上一次发布的，判断会差一拍。
+// 它也是状态带里唯一一条不依赖本机日志的判断 —— 云端构建同样算得出来。
+const AUTO_FRESH = (() => {
+  try {
+    const exp = HOL_EXPECTED; // 由 holidays.mjs 的 expectedCloseDate 给出（含 15:30 前算上一交易日）
+    if (!exp || !last?.date) return null;
+    const behind = last.date < exp ? tradingDaysBetween(last.date, exp) : 0;
+    return { label: '看板数据', available: true, dataDate: last.date, expected: exp, behind, ok: behind === 0 };
+  } catch {
+    return null;
+  }
+})();
+if (AUTO_FRESH && !AUTO_FRESH.ok) {
+  console.log(`  ⚠️ 看板数据落后 ${AUTO_FRESH.behind} 个交易日（本页 ${AUTO_FRESH.dataDate}，应有 ${AUTO_FRESH.expected}）`);
+}
 const dlt = (a, b, dec = 0) => {
   const d = a - b;
   return `<span class="${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${d.toFixed(dec)}</span>`;
@@ -437,6 +460,12 @@ const autoHtml = !AUTOMATION
   ? ''
   : (() => {
       const items = [AUTOMATION.daily, AUTOMATION.premarket].filter((h) => h && h.available);
+      // 数据新鲜度：**必须由这次构建自己算**，不能用 version.json（那是上一次发布的）。
+      // 它是唯一一条不依赖本机日志的判断 —— 云端构建也能算，因为依据只有
+      // 「本页数据截至哪一天」和官方休市日历。
+      // 为什么非要它：2026-10-09 本机 15:40 的日更被杀、云端又被旧的门误判跳过，
+      // 页面停在早上，而状态带只在本机日志里找证据 → **它根本没机会被人看到**。
+      if (AUTO_FRESH) items.push(AUTO_FRESH);
       if (!items.length) {
         return `<div class="autostrip dim"><b>自动化</b> 本机运行日志不可用（本页由云端构建），无法判断定时任务状态</div>`;
       }
@@ -444,17 +473,27 @@ const autoHtml = !AUTOMATION
         .map((h) => {
           const bad = !h.ok;
           const why =
-            h.behind > 0
-              ? `数据落后 ${h.behind} 个交易日`
-              : h.manualOnly
-                ? '数据靠手动补跑，计划任务未生效'
-                : '正常';
+            h.label === '看板数据'
+              ? h.behind > 0
+                ? `落后 ${h.behind} 个交易日（应有 ${h.expected}）`
+                : '已是最新交易日'
+              : h.behind > 0
+                // ⚠️ 措辞要区分「计划任务没跑成」和「数据落后」——后者由「看板数据」那条负责。
+                //    两条并排显示时，前一条说「数据落后」会直接和「看板数据 已是最新」打架。
+                ? `计划任务未跑成（落后 ${h.behind} 个交易日）`
+                : h.manualOnly
+                  ? '数据靠手动补跑，计划任务未生效'
+                  : '正常';
           const color = bad ? '#f59e0b' : '#43d19a';
+          const tail =
+            h.label === '看板数据' ? `截至 ${h.dataDate ?? '—'}` : `最后成功 ${h.lastOk ?? '无记录'}`;
           return (
-            `<span class="autochip" style="border-color:${color}" title="${esc(`计划任务最后一次成功：${h.lastScheduledOk ?? '没有记录'}`)}">` +
+            `<span class="autochip" style="border-color:${color}" title="${esc(
+              h.label === '看板数据' ? `本页数据截至 ${h.dataDate}` : `计划任务最后一次成功：${h.lastScheduledOk ?? '没有记录'}`,
+            )}">` +
             `<i style="background:${color}"></i><b>${esc(h.label)}</b>` +
             `<span style="color:${color}">${bad ? '⚠️' : '✓'} ${why}</span>` +
-            `<em>最后成功 ${esc(h.lastOk ?? '无记录')}</em></span>`
+            `<em>${esc(tail)}</em></span>`
           );
         })
         .join('');

@@ -1,23 +1,23 @@
 {
- "generatedAt": "2026-10-08T12:28:02.220Z",
+ "generatedAt": "2026-10-10T02:43:20.124Z",
  "source": "daily-long.json（东财日线，2010 起 4000 根）",
  "zAxis": true,
  "indices": {
   "sh": {
    "name": "上证指数",
    "from": "2010-04-15",
-   "to": "2026-10-08",
+   "to": "2026-10-09",
    "base": {
-    "n": 3991,
-    "fade": 44.7,
+    "n": 3992,
+    "fade": 44.6,
     "fadeK": 1782,
-    "meanIntra": 0.102,
+    "meanIntra": 0.103,
     "meanFull": 0.015,
     "meanGap": -0.088,
     "pVsBase": null,
     "edge": null
    },
-   "splitAt": "2018-07-13",
+   "splitAt": "2018-07-16",
    "buckets": [
     {
      "lo": null,
@@ -30,8 +30,8 @@
      "meanIntra": 0.141,
      "meanFull": -3.264,
      "meanGap": -3.404,
-     "pVsBase": 0.9599,
-     "edge": 0.8,
+     "pVsBase": 0.9545,
+     "edge": 0.9,
      "h1": {
       "n": 6,
       "fade": 66.7
@@ -55,7 +55,7 @@
      "meanFull": -1.378,
      "meanGap": -1.681,
      "pVsBase": 1,
-     "edge": -9.6,
+     "edge": -9.5,
      "h1": {
       "n": 36,
       "fade": 27.8
@@ -78,8 +78,8 @@
      "meanIntra": 0.047,
      "meanFull": -0.69,
      "meanGap": -0.738,
-     "pVsBase": 0.6128,
-     "edge": 1.4,
+     "pVsBase": 0.5881,
+     "edge": 1.5,
      "h1": {
       "n": 153,
       "fade": 45.8
@@ -96,21 +96,21 @@
      "hi": 0,
      "label": "−0.5 ~ 0",
      "side": "mid",
-     "n": 2001,
+     "n": 2002,
      "fade": 45.9,
      "fadeK": 918,
      "meanIntra": 0.066,
-     "meanFull": -0.141,
+     "meanFull": -0.14,
      "meanGap": -0.206,
-     "pVsBase": 0.2896,
-     "edge": 1.2,
+     "pVsBase": 0.2589,
+     "edge": 1.3,
      "h1": {
-      "n": 1054,
+      "n": 1055,
       "fade": 45.3
      },
      "h2": {
       "n": 947,
-      "fade": 46.6
+      "fade": 46.5
      },
      "stable": false,
      "sig": false
@@ -127,7 +127,7 @@
      "meanFull": 0.351,
      "meanGap": 0.185,
      "pVsBase": 1,
-     "edge": -1.8,
+     "edge": -1.7,
      "h1": {
       "n": 682,
       "fade": 41.2
@@ -151,7 +151,7 @@
      "meanFull": 0.977,
      "meanGap": 0.781,
      "pVsBase": 1,
-     "edge": -3.5,
+     "edge": -3.4,
      "h1": {
       "n": 54,
       "fade": 40.7
@@ -174,8 +174,8 @@
      "meanIntra": -0.045,
      "meanFull": 1.147,
      "meanGap": 1.188,
-     "pVsBase": 0.7186,
-     "edge": 3.4,
+     "pVsBase": 0.7107,
+     "edge": 3.5,
      "h1": {
       "n": 5,
       "fade": 60
@@ -198,8 +198,8 @@
      "meanIntra": -0.467,
      "meanFull": 1.697,
      "meanGap": 2.176,
-     "pVsBase": 0.0848,
-     "edge": 30.3,
+     "pVsBase": 0.0837,
+     "edge": 30.4,
      "h1": {
       "n": 3,
       "fade": 100
@@ -222,8 +222,8 @@
      "meanIntra": -2.26,
      "meanFull": 1.025,
      "meanGap": 3.404,
-     "pVsBase": 0.0261,
-     "edge": 55.3,
+     "pVsBase": 0.0258,
+     "edge": 55.4,
      "h1": {
       "n": 1,
       "fade": 100
@@ -246,8 +246,8 @@
      "meanIntra": -3.204,
      "meanFull": 2.161,
      "meanGap": 5.602,
-     "pVsBase": 0.054,
-     "edge": 55.3,
+     "pVsBase": 0.0536,
+     "edge": 55.4,
      "h1": {
       "n": 1,
       "fade": 100
@@ -264,9 +264,9 @@
   "szcz": {
    "name": "深证成指",
    "from": "2010-04-15",
-   "to": "2026-10-08",
+   "to": "2026-10-09",
    "base": {
-    "n": 3991,
+    "n": 3992,
     "fade": 48,
     "fadeK": 1916,
     "meanIntra": 0.074,
@@ -275,7 +275,7 @@
     "pVsBase": null,
     "edge": null
    },
-   "splitAt": "2018-07-13",
+   "splitAt": "2018-07-16",
    "buckets": [
     {
      "lo": null,
@@ -354,21 +354,21 @@
      "hi": 0,
      "label": "−0.5 ~ 0",
      "side": "mid",
-     "n": 1881,
+     "n": 1882,
      "fade": 50.6,
      "fadeK": 952,
      "meanIntra": -0.005,
      "meanFull": -0.261,
      "meanGap": -0.256,
-     "pVsBase": 0.0234,
+     "pVsBase": 0.0248,
      "edge": 2.6,
      "h1": {
       "n": 979,
       "fade": 49.2
      },
      "h2": {
-      "n": 902,
-      "fade": 52.1
+      "n": 903,
+      "fade": 52
      },
      "stable": true,
      "sig": true
@@ -387,14 +387,14 @@
      "pVsBase": 1,
      "edge": -3,
      "h1": {
-      "n": 790,
+      "n": 791,
       "fade": 43
      },
      "h2": {
-      "n": 765,
-      "fade": 46.9
+      "n": 764,
+      "fade": 47
      },
-     "stable": true,
+     "stable": false,
      "sig": false
     },
     {
@@ -522,9 +522,9 @@
   "cyb": {
    "name": "创业板指",
    "from": "2010-06-01",
-   "to": "2026-10-08",
+   "to": "2026-10-09",
    "base": {
-    "n": 3959,
+    "n": 3960,
     "fade": 48.3,
     "fadeK": 1913,
     "meanIntra": 0.104,
@@ -533,7 +533,7 @@
     "pVsBase": null,
     "edge": null
    },
-   "splitAt": "2018-08-06",
+   "splitAt": "2018-08-07",
    "buckets": [
     {
      "lo": null,
@@ -612,21 +612,21 @@
      "hi": 0,
      "label": "−0.5 ~ 0",
      "side": "mid",
-     "n": 1971,
+     "n": 1972,
      "fade": 50.8,
      "fadeK": 1002,
      "meanIntra": -0.011,
      "meanFull": -0.309,
      "meanGap": -0.298,
-     "pVsBase": 0.0242,
+     "pVsBase": 0.0256,
      "edge": 2.5,
      "h1": {
-      "n": 1105,
+      "n": 1106,
       "fade": 48.9
      },
      "h2": {
       "n": 866,
-      "fade": 53.3
+      "fade": 53.2
      },
      "stable": false,
      "sig": true
@@ -780,18 +780,18 @@
   "hs300": {
    "name": "沪深300",
    "from": "2010-04-15",
-   "to": "2026-10-08",
+   "to": "2026-10-09",
    "base": {
-    "n": 3991,
+    "n": 3992,
     "fade": 47.8,
     "fadeK": 1909,
     "meanIntra": 0.08,
     "meanFull": 0.018,
-    "meanGap": -0.062,
+    "meanGap": -0.063,
     "pVsBase": null,
     "edge": null
    },
-   "splitAt": "2018-07-13",
+   "splitAt": "2018-07-16",
    "buckets": [
     {
      "lo": null,
@@ -870,20 +870,20 @@
      "hi": 0,
      "label": "−0.5 ~ 0",
      "side": "mid",
-     "n": 1812,
+     "n": 1813,
      "fade": 48.8,
      "fadeK": 885,
-     "meanIntra": 0.034,
-     "meanFull": -0.202,
+     "meanIntra": 0.035,
+     "meanFull": -0.201,
      "meanGap": -0.236,
-     "pVsBase": 0.375,
+     "pVsBase": 0.3873,
      "edge": 1,
      "h1": {
       "n": 949,
       "fade": 47.8
      },
      "h2": {
-      "n": 863,
+      "n": 864,
       "fade": 49.9
      },
      "stable": false,
@@ -903,11 +903,11 @@
      "pVsBase": 1,
      "edge": -1,
      "h1": {
-      "n": 782,
-      "fade": 44.4
+      "n": 783,
+      "fade": 44.3
      },
      "h2": {
-      "n": 736,
+      "n": 735,
       "fade": 49.5
      },
      "stable": false,
