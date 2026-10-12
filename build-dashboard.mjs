@@ -676,7 +676,7 @@ const ls = lastState?.[1] ?? null;
 const sentStr = (d) => (senti?.daily?.[d]?.sent != null ? senti.daily[d].sent.toFixed(1) : '—');
 const typeColor = { 小盘主导: '#3fa66b', 大盘主导: '#ef4d5a', 无明显结构: '#f59e0b' };
 const statePanel = senti
-  ? `<div class="panel" data-panel="state"><h2>恐慌情绪状态描述器
+  ? `<div class="panel" data-panel="state"><h2>恐慌分位状态描述器
       <span class="hint">只做状态刻画，不输出预测概率</span></h2>
   <div class="sgrid">
     <div>
@@ -687,7 +687,7 @@ const statePanel = senti
         </div>
         <div class="gscale">${[0, 20, 40, 60, 80, 100].map((v) => `<span style="left:${v}%">${v}</span>`).join('')}</div>
       </div>
-      <div class="bignum">当前恐慌情绪 <b>${senti?.daily?.[lsDate]?.sent != null ? senti.daily[lsDate].sent.toFixed(1) : '—'}</b>
+      <div class="bignum">当前恐慌分位 <b>${senti?.daily?.[lsDate]?.sent != null ? senti.daily[lsDate].sent.toFixed(1) : '—'}</b>
         <span class="tiny">（${lsDate ?? '—'}）</span></div>
       <table class="stbl" style="margin-top:8px">
         <tr><th>指标</th><th>数值</th></tr>
@@ -698,7 +698,7 @@ const statePanel = senti
         <tr><td>主导维度</td><td>${ls?.dom ? esc(ls.dom) : '—'}</td></tr>
         <tr><td>综合严重度分</td><td>${ls?.score != null ? ls.score.toFixed(2) : '—'}</td></tr>
       </table>
-      <div class="sect" style="margin-top:14px">恐慌情绪 · 每日散点</div>
+      <div class="sect" style="margin-top:14px">恐慌分位 · 每日散点</div>
       <div id="sentChart"></div>
       <div class="tiny" style="margin-top:4px">左轴 = <b>情绪分</b>（0~100，与上方刻度同一量纲，越高越恐慌），右轴 = <b>乐观指数</b>（= 100 − 情绪分，镜像，越高越乐观），横轴 = 交易日；两侧是同一个分布（都是 N(50, 15²)）的两种读法，共用网格线。滚轮缩放 · 拖拽平移 · 双击复位；悬停看该日跌停家数。<br>
         彩点：<i class="mk" style="background:#ec4899"></i><i class="mk" style="background:#a855f7"></i><i class="mk" style="background:#f59e0b"></i>恐慌侧（粉/紫/橙，情绪分前 5%/3%/1%）；
@@ -1287,8 +1287,8 @@ ${autoHtml}
 <div class="row">
   <div class="panel" data-panel="candles"><div class="phead"><h2>上证指数 <span class="chg" data-chg="cdSh"></span></h2>
       <span class="hint">日线 · 滚轮缩放 / 拖拽平移 / 双击复位 ·
-        <i class="mk" style="background:#ec4899"></i>警觉
-        <i class="mk" style="background:#a855f7"></i>强恐慌        <i class="mk" style="background:#f59e0b"></i>极端<span class="tiny">（档位按情绪分切：前 5% / 3% / 1%）</span></span></div>
+        <i class="mk" style="background:#ec4899"></i>最严重 5%
+        <i class="mk" style="background:#a855f7"></i>最严重 3%        <i class="mk" style="background:#f59e0b"></i>最严重 1%<span class="tiny">（档位按恐慌分位切：最严重的 5% / 3% / 1%）</span></span></div>
     <svg id="cdSh" viewBox="0 0 500 280"></svg>
   </div>
   <div class="panel" data-panel="cyb"><div class="phead"><h2>双创 <span class="hint">创业板 + 科创板 · 日线</span></h2></div>

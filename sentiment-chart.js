@@ -185,7 +185,7 @@
     }
     // 轴名：不写的话两个数字列容易看混（左侧数字越大越恐慌，右侧越大越乐观）
     const capL = mk('text', { x: P.l, y: P.t - 6, fill: '#7b8698', 'font-size': '8.5', 'text-anchor': 'start' });
-    capL.textContent = '恐慌情绪';
+    capL.textContent = '恐慌分位';
     gGrid.appendChild(capL);
     const capR = mk('text', { x: W - P.r, y: P.t - 6, fill: '#4fb3c8', 'font-size': '8.5', 'text-anchor': 'end' });
     capR.textContent = '乐观指数';
