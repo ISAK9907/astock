@@ -65,6 +65,31 @@ if (gitCode(['diff', '--cached', '--quiet']) === 0) {
 const files = git(['diff', '--cached', '--name-only']).split('\n').filter(Boolean);
 const stat = git(['diff', '--cached', '--shortstat']);
 
+// ---- 外来文件防线 ----
+// 为什么需要：这个工作区根**同时是 DSH 的工作区**，混放着别的项目（avradio/、航空录音/、
+// tools/workbench/ …）。backup.mjs 用 `git add -A` 会把一切没被 .gitignore 拦住的东西全扫进来。
+// 而 .gitignore 是**黑名单** —— 靠它兜底必然漏：2026-10-12 就一次扫进 259 个文件，
+// 其中含 9 个 .WAV 私人录音，而当时 deploy-pages 刚把这个仓库设为**公开**。
+// 所以加两道白名单式的闸门：① 路径前缀不许出现在已知的外来目录里；
+//                            ② 单次快照的文件数上限（正常一次日更改动 1~40 个文件）。
+// 任何一条触发都拒绝提交，必须显式加 --allow-foreign 才放行。
+const FOREIGN = ['avradio/', '航空录音/', 'tools/workbench/', 'aviation/', '737/', 'gesture_keys/'];
+const foreign = files.filter((f) => FOREIGN.some((p) => f === p || f.startsWith(p)));
+const MAX_FILES = 60;
+if ((foreign.length || files.length > MAX_FILES) && !process.argv.includes('--allow-foreign')) {
+  console.error('\n✗ 拒绝提交：暂存区里疑似混进了与本项目无关的文件');
+  if (foreign.length) {
+    console.error(`  外来目录命中 ${foreign.length} 个：`);
+    for (const f of foreign.slice(0, 12)) console.error(`    ${f}`);
+    if (foreign.length > 12) console.error(`    …还有 ${foreign.length - 12} 个`);
+  }
+  if (files.length > MAX_FILES) console.error(`  本次暂存 ${files.length} 个文件，超过上限 ${MAX_FILES}（正常一次日更改动 1~40 个）`);
+  console.error('\n  这个仓库是**公开**的，私人文件进去就等于公开。');
+  console.error('  处理：把对应路径加进 .gitignore，然后 git reset HEAD -- <路径> 再重跑。');
+  console.error('  确认没问题（例如首次批量导入）再加 --allow-foreign 重来一次。');
+  process.exit(6);
+}
+
 // ---- 中文损坏防线 ----
 // 为什么需要：这个项目已经两次把源文件的中文写坏（都是 PowerShell 的 Get-Content|Set-Content
 // 按系统 GBK 读、再按 UTF-8 写）。坏出来的**不是 U+FFFD**，而是合法 UTF-8 的乱码，

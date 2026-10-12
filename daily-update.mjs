@@ -72,6 +72,12 @@ const steps = [
   ['自动化健康', 'analyze-automation.mjs'],
   ['盘中跌停曲线', 'fetch-dt-intraday.mjs'],
   ['全球市场日线', 'fetch-global.mjs'],
+  // ---- 工具二：持仓计划台 ----
+  // 用中证官方一个源同时拿价格+市盈率（绕开东财 push2 的整段封禁）。
+  // 必须排在生成看板之前 —— 看板顶部有跳转入口，计划台文件不存在时会指向空页。
+  ['估值数据', 'fetch-valuation.mjs'],
+  ['计划台分析', 'plan-analysis.mjs'],
+  ['计划台生成', 'build-plan.mjs'],
   ['生成看板', 'build-dashboard.mjs'],
 ];
 

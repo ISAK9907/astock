@@ -1280,8 +1280,11 @@ html[data-theme="light"] .updpanel code{background:#e8edf6;color:#1d4ed8}
 .synctoast span{color:var(--dim);font-size:11px}
 .synctoast .synclink{color:#5b8def;cursor:pointer;text-decoration:underline}
 html[data-theme="light"] .synctoast .synclink{color:#1d4ed8}
-/* ==================== 自动化状态带 ==================== */
-.autostrip{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0 10px;
+/* ==================== 工具二入口 ==================== */
+.toolnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 0;font-size:12px}
+.toolnav a{color:#5b8def;text-decoration:none;border:1px solid var(--line);border-radius:14px;padding:2px 10px}
+.toolnav a:hover{border-color:#5b8def}
+/* ==================== 自动化状态带 ==================== */.autostrip{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0 10px;
   background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:11px}
 .autostrip.dim{color:var(--dim)}
 .autostrip .pbtn{margin-left:auto;padding:2px 9px;font-size:10px}
@@ -1423,6 +1426,7 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
   <div id="pushBody"></div>
 </div>
 <h1>A股情绪与事件看板</h1>
+<div class="toolnav"><a href="plan.html">持仓计划台 →</a><span class="hint">估值区间 · 阶段标签 · 日历过滤器（只回答「现在该不该动」）</span></div>
 <button class="themebtn" id="themeBtn" type="button" title="切换昼夜模式" aria-label="切换昼夜模式">
   <svg class="i-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>

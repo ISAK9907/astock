@@ -1,6 +1,9 @@
 # ===== 密钥：绝不入库 =====
 # deploy-config.json 里是 GitHub token，一旦提交进历史就很难彻底清除
 deploy-config.json
+# push-config.json 里是 Bark 推送地址（形如 https://api.day.app/你的key —— key 就在 URL 里），
+# 这个仓库是公开的，填进去等于把推送权限公开。模板见 push-config.example.json。
+push-config.json
 
 # ===== 缓存 / 临时 / 工作目录 =====
 .cache/
@@ -16,6 +19,19 @@ aviation/
 gesture_keys/
 737复习工具-方案设计.md
 *.exe
+
+# 2026-10-12 又被 sweep 进来一次（backup.mjs 的 git add -A 会扫走一切没被忽略的东西）：
+#   avradio/      —— 另一个项目（212 个文件）
+#   航空录音/      —— **9 个 .WAV 录音**，私人音频，进公开仓库是不可接受的
+#   tools/workbench/ —— 另一个项目的工具台
+# 教训：gitignore 是「黑名单」，靠它兜底永远会漏；backup.mjs 里另加了一道白名单外的数量闸门。
+avradio/
+航空录音/
+tools/workbench/
+.audio-probe.py
+*.zip
+*.wav
+*.WAV
 
 # 云端日更（GitHub Actions）相关：本地缓存、wrangler 会话、临时克隆
 .wrangler/

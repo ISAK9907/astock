@@ -1,0 +1,21 @@
+{
+  "_说明": "这是模板。复制成 push-config.json 再填（那个文件已被 .gitignore 排除，不会进公开仓库）。",
+  "_为什么": "这个仓库是公开的。Bark 的推送地址形如 https://api.day.app/你的key —— key 在 URL 里，填进 tracked 的文件就等于把推送权限公开。",
+
+  "provider": "bark",
+
+  "_bark": "标准 Bark 协议（官方 https://api.day.app/你的key，或自建 bark-server）。",
+  "barkUrl": "",
+  "group": "DSH盘后",
+  "level": "active",
+  "sound": "",
+
+  "_webhook": "未知格式的推送接口用这个。method 支持 GET/POST；body 里 {title}/{body}/{group} 会被替换。",
+  "webhook": {
+    "url": "",
+    "method": "POST",
+    "contentType": "application/json",
+    "body": "{\"title\":\"{title}\",\"body\":\"{body}\"}",
+    "headers": {}
+  }
+}

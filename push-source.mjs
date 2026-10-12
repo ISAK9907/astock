@@ -40,6 +40,28 @@ try { unlinkSync(TMP); } catch { /* 忽略 */ }
 console.log(`待推文件 ${files.length} 个`);
 if (files.some((f) => f === 'deploy-config.json')) { console.error('✗ deploy-config.json 在清单里，拒绝推送'); process.exit(2); }
 
+// ---- 最后一道防线：这个仓库是**公开**的，推之前必须确认清单里没有外来文件 ----
+// 为什么在这里也要查一遍（backup.mjs 里已经有一道）：这条路径**直接面向公开仓库**，
+// 而它的输入是 `git ls-files` —— 一旦哪天有人用 `git add -f` 绕过了 .gitignore、
+// 或者 .gitignore 又被改漏，这里就是唯一还能拦住的地方。
+// 2026-10-12 的教训：一次误暂存里含 9 个 .WAV 私人录音，当时仓库刚设为公开。
+const FOREIGN = ['avradio/', '航空录音/', 'tools/workbench/', 'aviation/', '737/', 'gesture_keys/'];
+const SECRET_LIKE = ['deploy-config.json', '.env', 'bark.json', 'push-config.json', 'credentials', 'id_rsa'];
+const hits = [];
+for (const f of files) {
+  if (FOREIGN.some((p) => f === p || f.startsWith(p))) hits.push([f, '外来项目目录']);
+  if (/\.(WAV|wav|zip|pyc|xlsx?|docx?|pptx?|mp3|mp4)$/i.test(f)) hits.push([f, '不应入库的文件类型']);
+  if (SECRET_LIKE.some((s) => f.toLowerCase().includes(s))) hits.push([f, '疑似密钥/凭据']);
+}
+if (hits.length) {
+  console.error(`\n✗ 拒绝推送：待推清单里有 ${hits.length} 个可疑文件`);
+  for (const [f, why] of hits.slice(0, 15)) console.error(`    ${f}   ← ${why}`);
+  if (hits.length > 15) console.error(`    …还有 ${hits.length - 15} 个`);
+  console.error('\n  这个仓库是公开的。请先从 git 跟踪里移除（git rm --cached <路径>）并加进 .gitignore。');
+  process.exit(7);
+}
+console.log(`  ✓ 清单检查通过（无外来目录 / 无私人文件类型 / 无凭据）`);
+
 const owner = (await api('/user')).login;
 console.log(`目标仓库 ${owner}/${repo}`);
 

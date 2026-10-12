@@ -92,6 +92,12 @@ const FILES = [
   ['icon-192.png', 'icon-192.png'],
   ['icon-512.png', 'icon-512.png'],
   ['icon-maskable-512.png', 'icon-maskable-512.png'],
+  // ---- 工具二：持仓计划台（独立页面，和日更看板并存）----
+  // ⚠️ 这里只上传**工具代码**。持仓数据按设计只存在手机浏览器的 localStorage 里，
+  //    绝不上仓库 —— 这个仓库是公开的（Pages 免费版要求公开）。
+  ['plan.html', 'plan.html'],
+  ['version-plan.json', 'version-plan.json'],
+  ['manifest-plan.webmanifest', 'manifest-plan.webmanifest'],
 ];
 
 async function apiOrThrow(path, init, what) {
