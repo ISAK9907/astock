@@ -271,6 +271,13 @@ const server = createServer((req, res) => {
     '/icon-192.png': ['icon-192.png', 'image/png', 'public, max-age=3600'],
     '/icon-512.png': ['icon-512.png', 'image/png', 'public, max-age=3600'],
     '/icon-maskable-512.png': ['icon-maskable-512.png', 'image/png', 'public, max-age=3600'],
+    // ---- 工具二：持仓计划台 ----
+    // ⚠️ 必须一起加：看板标题下和页脚各有一个指向 plan.html 的入口，
+    //    局域网访问时如果这里没白名单，点进去就是 404（真踩到过）。
+    //    version-plan.json 也走 no-store，理由和 version.json 一样。
+    '/plan.html': ['plan.html', 'text/html; charset=utf-8', 'no-store'],
+    '/version-plan.json': ['version-plan.json', 'application/json; charset=utf-8', 'no-store'],
+    '/manifest-plan.webmanifest': ['manifest-plan.webmanifest', 'application/manifest+json; charset=utf-8', 'public, max-age=3600'],
   };
   if (PWA[url]) {
     const [name, type, cache] = PWA[url];
