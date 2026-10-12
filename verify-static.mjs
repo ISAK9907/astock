@@ -30,11 +30,21 @@ const need = [
   ['长假前后上证表现', '假期效应表头'],
   ['对照基准（同期任意交易日）', '无条件基准行'],
   ['data-panel="events"', '事件面板'],
-  ['data-panel="signal"', '盘前信号面板'],
+  ['data-panel="state"', '恐慌情绪状态面板'],
+  // ⚠️ 这里原本断言 data-panel="signal"（盘前信号面板）存在。
+  //    2026-10-12 按「减负」把它和「开盘跳空情景」一起删了 ——
+  //    前者只覆盖 2.6% 的交易日，后者 40 个格子在多重比较下一个都不显著。
+  //    断言改成「这两个面板必须不在」，否则减负会被误判成回归。
+  ['data-panel="pushlog"', '历史推送面板'],
   ['dzTouch', '触摸交互'],
   ['manifest.webmanifest', 'PWA manifest'],
 ];
 for (const [k, label] of need) ok(html.includes(k), `${label}（${k}）`);
+
+// 3b. 已删面板不能复活（减负的反向断言）
+for (const [k, label] of [['data-panel="signal"', '盘前信号面板'], ['data-panel="scenario"', '开盘跳空情景面板']]) {
+  ok(!html.includes(k), `已删除：${label}（${k}）`);
+}
 
 // 4. 数据占位符没漏出去
 for (const bad of ['undefined</', 'NaN%', '[object Object]']) ok(!html.includes(bad), `无 ${bad}`);
@@ -53,8 +63,8 @@ if (m) {
 {
   const { statSync } = await import('node:fs');
   const srcs = [
-    'build-dashboard.mjs', 'sentiment-chart.js', 'scenario.js', 'update-button.js', 'autosync.js',
-    'market-data.json', 'dt-stats.json', 'sentiment.json', 'daily-long.json', 'open-scenario.json',
+    'build-dashboard.mjs', 'sentiment-chart.js', 'update-button.js', 'autosync.js',
+    'market-data.json', 'dt-stats.json', 'sentiment.json', 'daily-long.json',
     'automation.json', 'push-archive.json', 'holidays.mjs',
   ];
   const art = statSync('astock-dashboard.html').mtimeMs;
@@ -63,6 +73,21 @@ if (m) {
   ok(newer.length === 0, newer.length === 0
     ? '产物比所有源文件新（构建确实跑成功过）'
     : `产物已过期！以下源文件比 astock-dashboard.html 新：${newer.join(', ')} —— 构建多半报错了，重跑 node build-dashboard.mjs 看完整输出`);
+}
+
+// 7. 计划台也要做同样的过期兜底（同一个坑：构建崩了但旧产物还在）
+{
+  const { statSync, existsSync } = await import('node:fs');
+  if (!existsSync('plan.html')) {
+    ok(false, 'plan.html 不存在（应先跑 node build-plan.mjs）');
+  } else {
+    const srcs = ['plan-data.json', 'plan.js', 'plan-holdings.js', 'plan-log.js', 'build-plan.mjs'];
+    const art = statSync('plan.html').mtimeMs;
+    const newer = srcs.filter((f) => { try { return statSync(f).mtimeMs > art + 1000; } catch { return false; } });
+    ok(newer.length === 0, newer.length === 0
+      ? 'plan.html 比所有源文件新'
+      : `plan.html 已过期！以下源文件更新：${newer.join(', ')} —— 重跑 node build-plan.mjs`);
+  }
 }
 
 console.log(fail === 0 ? '\nSTATIC VERIFY: PASS' : `\nSTATIC VERIFY: FAIL (${fail})`);

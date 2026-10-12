@@ -18,7 +18,7 @@ rem  Also: the scheduled task sets no WorkingDirectory, so the cd below is
 rem  mandatory - without it the log redirect fails (no write access to System32)
 rem  and node cannot even find premarket.mjs.
 rem ============================================================================
-cd /d "C:\Users\12452\Desktop\deepseek"
+cd /d "C:\Users\12452\Desktop\deepseek\astock"
 set NODE="C:\Program Files\nodejs\node.exe"
 set LOG=premarket.log
 rem Tell build-dashboard this is the morning build. The cloud gate needs to tell

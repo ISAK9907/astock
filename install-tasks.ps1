@@ -20,7 +20,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Dir = 'C:\Users\12452\Desktop\deepseek'
+$Dir = 'C:\Users\12452\Desktop\deepseek\astock'
 $User = "$env:COMPUTERNAME\$env:USERNAME"
 
 if ($Show) {

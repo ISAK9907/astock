@@ -15,7 +15,7 @@ rem  tail as a command (seen: "'0' is not recognized" / "The syntax of the comma
 rem  is incorrect" / "'...' is not recognized"). Chinese text is only safe inside
 rem  node output, never in this script. Control flow uses if ... goto, never blocks.
 rem ============================================================================
-cd /d "C:\Users\12452\Desktop\deepseek"
+cd /d "C:\Users\12452\Desktop\deepseek\astock"
 set NODE="C:\Program Files\nodejs\node.exe"
 set LOG=daily-update.log
 rem Mark this run as scheduled so record-run.mjs can tell it apart from a manual run.

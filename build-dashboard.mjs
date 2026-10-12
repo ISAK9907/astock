@@ -5,19 +5,10 @@ import { tiersOpt } from './sentiment-map.mjs';
 
 const data = JSON.parse(readFileSync('market-data.json', 'utf8'));
 const tr = JSON.parse(readFileSync('trends-m5.json', 'utf8'));
-// 开盘跳空情景统计（analyze-open-scenario.mjs 生成）。
 // ⚠️ 必须在这里（早于任何使用它的模板拼接）定义：它是 const，
 //    在声明前引用会抛暂时性死区 ReferenceError，而且堆栈里没有 "警告/wrote" 字样，
 //    一眼看不出是构建崩了还是正常——踩过一次。
 //    缺失时整块面板不渲染，不让看板因为一个分析文件缺失而崩掉。
-const SCENARIO = (() => {
-  try {
-    return JSON.parse(readFileSync('open-scenario.json', 'utf8'));
-  } catch {
-    console.warn('警告: open-scenario.json 不可读，开盘情景面板将省略（运行 node analyze-open-scenario.mjs）');
-    return null;
-  }
-})();
 // 自动化健康度（analyze-automation.mjs 生成）。同样必须早于任何使用它的模板拼接。
 // 它读的是本机日志，而 *.log 被 .gitignore 排除 —— 云端构建时读不到，
 // 那时面板会明确说明「本页由云端构建」，而不是假装一切正常。
@@ -504,83 +495,7 @@ const autoHtml = !AUTOMATION
       return `<div class="autostrip">${head}${chips}<button class="pbtn" data-desc="automation" type="button">说明</button></div>`;
     })();
 
-const sigState = SIG.find((s) => s.key === 'sh') ?? SIG[0] ?? null;const sigPanelHtml = !sigState
-  ? ''
-  : `<div class="panel" data-panel="signal"><div class="phead"><h2>明日开盘应对<span class="hint">T 日状态 × T+1 集合竞价跳空 · 开盘后自动更新</span></h2>
-    <span class="hint" id="sigStamp">等待竞价…</span></div>
-  <div class="sgrid">
-    <div>
-      <div class="sect">T 日状态（${T_DATE} 收盘）</div>
-      <table class="stbl">
-        <tr><th>指数</th><th>T 日涨跌</th><th>量能(÷20日均)</th><th>档位</th></tr>
-        ${SIG.map((s) => {
-          const tier = s.retT <= TH.retWeak ? ['弱', '#43d19a'] : s.retT >= TH.retStrong ? ['强', '#ff7a86'] : ['不够极端', '#7b8698'];
-          const vol = s.amtRatio == null ? '—' : s.amtRatio < TH.amtLow ? '缩量' : s.amtRatio >= TH.amtHigh ? '放量' : '平量';
-          return `<tr><td>${esc(s.name)}</td><td class="${s.retT >= 0 ? 'up' : 'down'}">${s.retT >= 0 ? '+' : ''}${s.retT.toFixed(2)}%</td>` +
-            `<td>${s.amtRatio == null ? '—' : s.amtRatio.toFixed(2) + '×'} <span class="tiny">${vol}</span></td>` +
-            `<td style="color:${tier[1]}">${tier[0]}</td></tr>`;
-        }).join('')}
-      </table>
-      <div class="sect" style="margin-top:8px">竞价跳空后的建议（上证口径）</div>
-      <div id="sigDecision" class="sigbox">竞价数据将在开盘后自动获取。</div>
-    </div>
-    <div>
-      <div class="sect">为什么不再给「按 T 日状态预演」的条件清单</div>
-      <div class="tiny" style="line-height:1.7">
-        原来这里是一张「T日状态 × 跳空阈值 → 建议」的表。它的触发条件很严（跳空 &gt;±1% <b>且</b> T 日涨跌超阈值），
-        16 年 3978 个交易日里<b>只触发 105 次（2.6%）</b>——大多数日子整张表都是「观望」，参考价值有限。<br>
-        改为按<b>跳空幅度本身</b>统计历史情景，见下方「开盘跳空 · 历史情景参考」面板：
-        跳空每天都发生，每一档都有样本，而且是 16 年 × 4 指数的宏观规律，不需要每天跟踪。<br>
-        <span style="color:var(--dim)">本面板保留的是「当日实况」：T 日状态、实时竞价跳空、以及前 5 日的理论/实际复盘对照。</span>
-      </div>${sigReviewHtml}
-    </div>
-  </div>
-  <div class="foot" id="sigFoot">读秒中…</div>
-</div>`;
 
-// 开盘跳空的历史情景参考（数据来自 analyze-open-scenario.mjs）。
-// 这是一张「查表用」的宏观参考，不参与每日信号判断，所以单独成panel。
-const scenarioPanelHtml = !SCENARIO
-  ? ''
-  : (() => {
-      // 极端高开那几天的汇总。这一行是整块面板最关键的一句话：
-      // 「日内回落」和「全天涨跌」是两件事 —— 极端高开之后日内多半回踩，
-      // 但当天整体往往仍然收涨（因为跳空本身够大）。不把这两句一起说会误导成「高开必跌」。
-      const ex = SCENARIO.extremeDays ?? [];
-      const fell = ex.filter((g) => g.intra < 0).length;
-      const up = ex.filter((g) => g.full > 0).length;
-      const mIntra = ex.length ? ex.reduce((a, g) => a + g.intra, 0) / ex.length : 0;
-      const mFull = ex.length ? ex.reduce((a, g) => a + g.full, 0) / ex.length : 0;
-      const sum = ex.length
-        ? `<b>这 ${ex.length} 天的共同点</b>：${fell}/${ex.length} 天<b>日内回落</b>（平均 ${mIntra >= 0 ? '+' : ''}${mIntra.toFixed(2)}%），
-           但 ${up}/${ex.length} 天<b>全天仍然收涨</b>（平均 ${mFull >= 0 ? '+' : ''}${mFull.toFixed(2)}%）。<br>
-           <b>所以它不是「高开会跌」</b>，而是「极端高开之后日内容易回踩，当天整体往往还是涨的」——
-           含义是<b>不要在极端高开时追高</b>（买在开盘等于买在当日高点），而不是看跌。`
-        : '';
-      return `<div class="panel" data-panel="scenario">
-  <div class="phead"><h2>开盘跳空 · 历史情景参考<span class="hint">${Object.keys(SCENARIO.indices).length} 个指数 · ${SCENARIO.indices.sh?.from ?? ''} 起 ${SCENARIO.indices.sh?.base?.n ?? ''} 个交易日</span></h2>
-    <button class="pbtn" data-desc="scenario" type="button">说明</button></div>
-  <div class="tiny" style="margin-bottom:6px;line-height:1.7">
-    自变量用 <b>跳空 ÷ 20日波动率（σ20）</b>，不是绝对跳空幅度 —— 因为 +2% 在低波动环境是极端事件、在高波动环境只是噪音。
-    <span style="color:var(--dim)">实测按绝对跳空分档时，各档日内回落率都贴着基准 45~48%，看不出方向；换成这个口径后单调关系才显现。</span>
-  </div>
-  <div id="scenTabs" class="scen-tabs"></div>
-  <div id="scenTable"></div>
-  <div class="sect" style="margin-top:12px">历史上「极端高开」的 ${ex.length} 个交易日 <span class="hint">跳空 ÷ σ20 ≥ 2，即高开幅度超过近期波动率的 2 倍</span></div>
-  <div id="scenExt"></div>
-  ${sum}
-  <div class="tiny" style="margin-top:8px;line-height:1.7">
-    <b>怎么用</b>：这是一张背景参考，不是预测。判断某个开盘是否属于「历史上容易被回补」的情形，
-    从而<b>避免在极端高开时追高</b>；反向的，低开（z ≤ −1）后日内偏反弹。<b>不需要每天跟踪。</b><br>
-    <b>⚠️ 三点必须知道</b>：<br>
-    ① 极端档<b>样本极少</b> —— z≥2 在 16 年里只有 <b>${ex.length} 个交易日</b>，点估计不可靠，请连同样本量一起看；<br>
-    ② 四个指数<b>当天一起跳空、高度相关</b>，所以「4 个指数都命中」不等于 4 个独立样本，别把胜率当 4 倍证据；<br>
-    ③ 16 年市场结构变过（涨跌停制度、注册制、量化占比），故给了前后分段一致性；<b>只有既显著又稳健的档位才值得当规律</b>，
-    其余（尤其样本 &lt; 20 的）只当个案。<br>
-    本表只呈现公开市场数据的历史统计，<b>不构成投资建议</b>。
-  </div>
-</div>`;
-    })();
 
 // 给服务端 /signal 用的轻量状态文件（只含 T 日状态，不含 1.6MB 历史）
 if (SIG.length) {
@@ -907,102 +822,6 @@ const dtPanel = dtStats
 
 // ---------- 每个面板自己的「说明」内容（原全局长脚注拆解到各面板） ----------
 const PDESC = {
-  signal: {
-    title: '明日开盘应对（盘前信号）',
-    html: `<b>逻辑</b>：T 日状态 × T+1 集合竞价跳空 → T+1 开盘应对。两个条件在 <b>T+1 集合竞价结束（9:25）时都已观测到</b>，所以可执行；T+1 下「卖出手上已有持仓、收盘再买回」合法，赚的是<b>开盘→收盘</b>的回落。<br>
-<b>依据</b>：16 年 × 4 指数 × 15876 对 (T, T+1) 对。核心是<b>交互效应</b>——跳空本身几乎没有信息（低开→高开的跨度只有 −0.11%），必须叠加 T 日状态才显现。<b>弱市高开跨度 −0.95%，强市高开跨度 +0.97%</b>。中间状态（中性）历史上无边缘（各时段方向 2/4 一致）。<br>
-<b>T 日状态用两个维度</b>（相关系数 0.22，基本独立）：涨跌幅（±0.5% 分档）与成交量 ÷ 20 日均值（0.9 / 1.15 分档）。<br>
-<b>分时代一致性</b>：弱+高开 4/4、弱+缩量+高开 4/4、强(≥1%)+高开 4/4、强+放量+高开 3/3、弱+低开 4/4 时段方向一致。作为对照，早先那个「无条件高开低走」效应在 2019-2021 直接翻负。<br>
-<b>阈值不是拟合出来的</b>：弱势阈值从 −0.2% 到 −1.5% 全程单调且几乎全 4/4（−0.2%: −0.37%、−0.5%: −0.42%、−1.0%: −0.48%）；跳空阈值也是干净的量效关系（+0.8%: −0.17% → +1.5%: −0.91% → +2.0%: −1.84%）。但强势侧 +0.5% 只有 3/4、+1.0% 才 4/4，故强弱阈值取不对称（−0.5% / +1.0%）。<br>
-<b>⚠️ 局限</b>：① 频率低，单指数约 1.5~3 次/年；② 期望值未扣成本（往返约 0.12%）；③ 强市侧只有 3/4 时段一致，弱市侧更可靠；④ 样本是指数层面，个股会被平均掉。`,
-  },
-  intra: {
-    title: '三大指数 45 日 5 分钟线',
-    html: `<b>数据源</b>：新浪 <code>getKLineData</code>。该接口一次请求上限约 1950~1990 根 —— <code>scale=5&datalen=1950</code> 覆盖 41 个交易日，更早的几天用 <code>scale=15&datalen=900</code>（50 个交易日）补齐，所以窗口最老那几天是 15 分钟粒度，图上呈阶梯状。<br>
-<b>为什么不用别的</b>：腾讯 <code>minute/query</code> 与 <code>day/query</code> <b>都会忽略 date 参数</b>，只返回最近 1 天 / 5 天；同花顺 5 分钟档对 <code>sh_</code>（沪市）代码返回 502；东财 kline 常被限流（有降级路径）。<br>
-<b>口径</b>：日切为 09:35-11:30 / 13:05-15:00 共 48 档，每档取「时间 ≤ 档位」的末值。<b>「中证2000」用中证2000ETF华泰柏瑞(sh563300)代理</b>，存在小幅跟踪误差与折溢价；<b>「同花顺全A(沪深京)」</b>取同花顺自编指数 883957 —— 该接口对<b>当日有滞后（只写 1 根）</b>，已用当日 1 分钟分时（241 点）自动补齐。<br>
-<b>极值标注</b>取上证指数在<b>当前视野</b>内的最高/最低<b>5 分钟收盘价</b>，并在该价位<b>横贯全图画出水平虚线</b>作为参考线；随缩放平移实时重算。注意是 5 分钟收盘价而非分笔瞬时高低，与行情软件的「最高价」可能差几分钱。<br>
-<b>交互</b>：<b>上下两张图共享同一横向视野</b> —— 滚轮缩放（鼠标位置为锚点）、拖拽平移、双击复位在任一图上操作，另一张同步变化；十字准线的竖线同时出现在两张图上（横线与左轴数值只画在鼠标所在的那张），并与其他面板按日期联动。<br>
-上图=累计涨跌幅（以区间首点为 0）；下图=每日归零（以当日首个有效点为 0），便于逐日比较日内形态。`,
-  },
-  candles: {
-    title: '上证指数日K',
-    html: `<b>数据源</b>：腾讯 <code>fqkline</code>，400 根前复权日线（2024-08-28 起）。<br>
-<b>底部标记</b>按<b>情绪分</b>分档（不是绝对严重度分）：<i class="mk" style="background:#ec4899"></i>警觉（粉，情绪分 ≥ ${dtStats?.tiers?.[0]?.sentLo ?? 74.7}）<i class="mk" style="background:#a855f7"></i>强恐慌（紫，≥ ${dtStats?.tiers?.[1]?.sentLo ?? 78.2}）<i class="mk" style="background:#f59e0b"></i>极端（橙，≥ ${dtStats?.tiers?.[2]?.sentLo ?? 84.9}），即窗口内最严重的前 5% / 3% / 1%。<b>为什么不用绝对严重度分</b>：它无上界，三年窗口里最惨的一天（2025-04-07，2815 家跌停）能到 46.9，而写死的门槛只有 3.0，同一个颜色里会塞进相差十几倍的事件；情绪分是排名映射、天然有界，换个窗口长度也不用重标。<br>
-<b>悬停</b>显示当日恐慌情绪 / 跌停家数 / 市值占比 / 权重股跌停 / 大/中/小盘分布。<br>
-<b>粉/紫/橙标记日</b>的悬停卡片里还会多一张<b>「当日跌停家数走势」迷你曲线</b>（每 5 分钟一档），同时底部那条标记会被高亮。曲线由 <b>baostock 5 分钟线还原</b>：对当日每只跌停股，逐根 5 分钟 bar 判定「收盘价是否等于跌停价」，统计该时点封死跌停的家数，并给出累计曾触及家数。<br>
-<b>为什么不用东财跌停池</b>：该接口只保留最近约 7 个交易日，且只有「最后封板时间」而非「首次触及」——例如北方铜业当日 09:40 就触及跌停、14:56 才最终封死，用最后封板时间画曲线会系统性滞后。<br>
-<b>口径与偏差</b>：历史市值为估算（当前流通市值 × 当日收盘比，假设股本不变）；权重股名单为当前沪深300+中证500，存在成分变更的前视偏差。曲线按 5 分钟收盘价判定，与分笔口径可能有微小差异。`,
-  },
-  cyb: {
-    title: '双创（创业板指 + 科创50）',
-    html: `<b>数据源</b>：腾讯日线，创业板指 <code>sz399006</code>、科创50 <code>sh000688</code>。<br>
-中证科创创业50 指数 <code>931643</code> 在腾讯无数据，故未采用。`,
-  },
-  dtstat: {
-    title: '跌停家数 × 市值 × 权重股 · 统计关系',
-    html: `<b>样本</b>：${dtStats?.window?.n ?? 0} 个交易日（${dtStats?.window?.start ?? '—'} 起，近三年）。<br>
-<b>⚠️ 窗口长度对结论影响极大 —— 而且这次是往「显著」的方向翻</b>：153 天窗口下「跌停家数 → 未来 1 日收益」相关系数是 <b>+0.216（p=0.007，显著）</b>；缩到 300 天降到 <b>+0.110（p=0.056，不显著）</b>，当时据此判过「结论不稳健」；现在扩到 <b>${dtStats?.window?.n ?? 743} 天又回到 +0.136（p=0.0002，显著）</b>。三段点估计方向一致、都落在 +0.11~+0.22，说明信号本身存在，只是<b>中等样本量下信噪比不足</b>。教训：任何「某窗口下不显著」的判断都不该当成结论。<br>
-<b>档位表现（本窗口）</b>：橙档（前 1%，${dtStats?.tiers?.[2]?.n ?? 0} 天）反转 lift 最高 ${(dtStats?.tiers?.[2]?.lift ?? 0).toFixed(2)}x、5 日胜率 ${(dtStats?.tiers?.[2]?.f5Win ?? 0).toFixed(0)}%；紫档（前 3%）lift ${(dtStats?.tiers?.[1]?.lift ?? 0).toFixed(2)}x、胜率 ${(dtStats?.tiers?.[1]?.f5Win ?? 0).toFixed(0)}%；粉档（3~5%）lift ${(dtStats?.tiers?.[0]?.lift ?? 0).toFixed(2)}x、胜率 ${(dtStats?.tiers?.[0]?.f5Win ?? 0).toFixed(0)}%。单档样本只有个位数到十几，<b>不足以据此下单</b>。<br>
-<b>口径与偏差</b>：历史市值 = 当前流通市值 × 收盘比（跨越 15 个月误差较大）；权重股名单存在前视偏差；失败个股约 3%，会小幅低估。<b>以上为统计描述，不是预测模型，不足以作为交易依据。</b>`,
-  },
-  state: {
-    title: '恐慌情绪状态描述器',
-    html: `<b>只做状态刻画，不输出预测概率</b><br>
-恐慌情绪拆成两个量，别混：<br>
-① <code>score = max(跌停家数/60, 跌停市值占比%/1.0, 权重股跌停数/12)</code> —— <b>取最严重的那一维</b>，是<b>绝对强度</b>，1.0 表示某一维刚好达到阈值。上面那张表的数值是它。<br>
-② <code>sent</code>（刻度上那个大数字）—— 把 score 在<b>最近 ${senti?.window?.n ?? 743} 个交易日（近三年）里的名次</b>换算成经验分位 p，再过标准正态分位得 <code>sent = 50 + 15·Φ⁻¹(p)</code>，即固定 <b>N(50, 15²)</b>。并列的 score 按日期顺序展开成不同名次（否则同分的日子会挤成同一个读数，直方图低端鼓包）。实测 均值 50.0 · 标准差 15.0 · 偏度 0.000 · 超峰度 −0.09。<br>
-③ <code>乐观指数 = 100 − sent</code> —— <b>不是第三个量，是②的镜像读数</b>。散点图右轴就是它：同一个点左读恐慌、右读乐观，共用网格线。<b>高斯性自动继承</b>（关于 50 镜像不改变 N(50,15²)：均值 50.00 / 标准差 14.99 / 偏度 0.000 / 超峰度 −0.04），<b>不需要也无法单独拟合</b>。档位门槛与恐慌侧<b>同一组数字</b>（74.7 / 78.2 / 84.9），因为两者在同一个 0~100 刻度上：「最乐观的前 5%」= 乐观指数 ≥ 74.7 ⟺ 情绪分 ≤ 25.3。配色用冷色系（青/碧/绿）与恐慌侧（粉/紫/橙）对称，两侧同一分位、不同色相，避免「极度乐观」和「极度恐慌」撞色。<br>
-<b>⚠️ 两端到不了 0 和 100</b>：分位公式的 p 最大只有 (N−0.5)/N，N=743 时上限约 94.9，实际读数落在 <b>1.9 ~ 98.1</b>。这是固定刻度的代价，换来的好处是<b>刻度不随样本重标</b> —— 曾试过把 z 线性拉伸到满量程、让最极端日 = 100，但那样刻度端点会绑死在「样本内极值」上：样本一变（出现新的极值日）整条历史读数都要重算，跨时间就不可比了。<br>
-<b>为什么从指数式改成分位式</b>：更早用的是 <code>sent = 100×(1 − exp(−score/2.5))</code>，饱和指数曲线，实测 <b>82% 的日子挤在 0~20</b>，既不像高斯、也没法跨时间横向比较。<br>
-<b>⚠️ 代价（重要）</b>：<code>sent</code> 是<b>相对读数</b> —— 同一个绝对 score 在不同窗口里会得到不同的 sent；<code>sent = 80</code> 的含义是「在当前窗口内严重程度排前 20%」，<b>既不是 80% 的概率，也不是绝对强度</b>。要看绝对强度请读 <code>score</code> 或上面那张表。窗口长度由 <code>DT_WINDOW</code> 控制，当前 <b>${senti?.window?.n ?? 743} 个交易日（约三年）</b>。<br>
-<b>阈值表的红色行</b>：判定标准是「边际 ≥ 3pp 且二项检验 p &lt; 0.1」，二者缺一即标红。<b>注意多重比较</b>：同时看 7 个阈值再挑最显著的，等价于多重检验，需按 Bonferroni 把门槛压到 0.05/7 ≈ 0.007 —— 当前只有「情绪分 ≥ 80」过得了这一关。<br>
-恐慌类型按跌停股的市值结构划分，<b>仅在家数 ≥ 10 时判定</b>：微盘踩踏（小盘 ≥65%）、权重杀跌（大盘 ≥50%）、全面抛售。<br>
-此前做过的「情绪分 → 反弹概率」机器学习式预测因样本外表现不敌基准，已从面板移除。右下角那张表是<b>更朴素的条件概率</b>（不建模、不挑变量，直接把情绪分阈值与次日涨跌对上），留作背景参考 —— 里面标红的阈值在当前窗口下已无区分度，<b>不要把整张表当作可用信号</b>。<br><br>
-<b>散点图上叠加的两条指数线（上证 / 中证2000）怎么读</b>：<br>
-<b>纵坐标 = 相对「当前显示区间第一个点」的涨跌%</b>，而 <b>0% 钉在纵轴的 50 中位线上</b> ——
-不是图底部那条 0，也不是另画的虚线。这样全图只有<b>一条中性线</b>：情绪分的 50（分布中位）与指数的
-0%（区间首点）重合，<b>线在中位线以上 = 相对这段开头是涨的，以下 = 是跌的</b>，与散点的读法一致。<br>
-百分比刻度在最右侧一列，围绕 0 <b>对称</b>：<code>+half / +half÷2 / 0 / −half÷2 / −half</code> 依次贴在
-<code>100 / 75 / 50 / 25 / 0</code> 五条网格线上（不另画网格）。<code>half = max(0.5%, 可见范围上下界绝对值的较大者 × 1.08)</code>，
-下限 0.5% 是为了「几乎没波动」时不把噪声放大成满屏。<br>
-<b>基准随缩放/平移移动</b>：放到哪一段，那一段的第一个点就自动落在中位线上，旁边的文字会写出基准日期。
-这与「45日5分钟线」里累计涨跌幅那张图是同一口径（那边由 <code>intraday-zoom.js</code> 的 <code>norm(mode='cum')</code> 实现）。<br>
-<b>为什么不用价格直接画</b>：价格是 3800 / 3000 这样的量纲，直接画会有两个问题 ——
-① 0~100 的网格线读不出价格含义，左轴刻度等于变成假的；② 上证 ~3800 与中证2000 ~3000 是两个量级，
-两者之间没法共用一根价格轴。归一化成百分比后两条线同量纲，最右侧一列可以同时服务两条线。<br>
-<b>代价（必须说清）</b>：纵轴高度<b>不能跨区间比较</b> —— 同一根高度，缩放到不同区间含义不同。
-真实收盘价与百分比在<b>图例</b>（可见区间末值）和<b>悬停卡片</b>（当日值）里都给出。<br>
-<b>⚠️ 图上那两条线 ≠ 上面结论行里的「分位」</b>：线画的是相对显示区间首点的涨跌%（会随缩放改基准），
-分位说的是「在近三年窗口里排第几」（固定不变，50 = 中位）。两者不是一回事，别混着读。<br>
-<b>数据源</b>：上证取 <code>daily-long.json</code>（东财/新浪，2010 起）；中证2000 <code>932000</code> 是<b>中证独有指数</b>，
-东财 kline（secid 2/1/0.932000 全部取不到）、腾讯、新浪 hq <b>都没有</b>，只有<b>中证官方接口</b>能取，
-且能回溯到基日（约 3100 根）。<br>
-<b>⚠️ 中证2000 没有降级路径</b>：官方源挂了就只能沿用旧数据（其余四个指数都有东财→同花顺→新浪三级降级）。
-若散点图上少了一条线，先查 <code>daily-long.json</code> 里 <code>csi2000</code> 是否还在。`,
-  },
-  scenario: {
-    title: '开盘跳空 · 历史情景参考',
-    html: `<b>这张面板和上面那张的关系</b>：上面「明日开盘应对」是<b>当日实况</b>（T 日状态 + 实时竞价跳空 + 前 5 日复盘）；
-    这张是<b>宏观背景参考</b>，回答「历史上这类开盘之后通常怎么走」。<br>
-<b>为什么拆成两张</b>：原来的「T日状态 × 跳空阈值 → 建议」条件清单，触发条件很严（跳空 &gt;±1% 且 T 日涨跌超阈值），
-16 年 3978 个交易日里只触发 <b>105 次（2.6%）</b>，绝大多数日子整张表都是「观望」。而跳空每天都在发生 ——
-按跳空本身分档，每一档都有样本，才是可查的。<br>
-<b>为什么自变量是「跳空 ÷ 20日波动率」(z) 而不是绝对跳空幅度</b>：<br>
-&nbsp;&nbsp;· 实测按<b>绝对跳空</b>分档时，各档的日内回落率都贴着基准 45~48%，<b>看不出方向</b>（+2% 这种档位 16 年只有 5~13 天）；<br>
-&nbsp;&nbsp;· 换成 z 之后关系立刻干净且<b>四个指数一致</b>：z 越大，日内回落概率越高、平均日内收益越低。
-z≥2 时四家的日内回落率是 83~100%、平均日内 −2.0~−2.8%；而 z 在 −2~−1 时回落率 35~41%（低于基准），平均日内为正。<br>
-&nbsp;&nbsp;· 直觉：+2% 在低波动环境是<b>极端事件</b>，在高波动环境只是<b>噪音</b>。按波动率归一化才摘出「意外程度」。<br>
-<b>三个必须一起看的东西</b>：<br>
-&nbsp;&nbsp;① <b>样本量</b> —— z≥2 在 16 年里只有 10 个交易日，「100% 回落」是 7 个样本里的 7 个，不是 100 次里的 100 次；<br>
-&nbsp;&nbsp;② <b>显著性</b> —— 与「本指数全样本日内回落率」做二项检验，标 \`*\`（p&lt;0.05）/ \`**\`（p&lt;0.01）。注意这张表有 ~40 个格子，
-多格比较下出现单个 p&lt;0.05 属正常，Bonferroni 门槛要压到 0.05/40 ≈ 0.00125，只有达到那个量级才真正稳；<br>
-&nbsp;&nbsp;③ <b>分段稳健</b> —— 以 2018 年中为界的前后两段，方向是否一致。只有「既显著又稳健」的档位才值得当规律。<br>
-<b>⚠️ 一个容易犯的统计错误</b>：四个指数是同一天一起跳空的，把它们合并<b>不会</b>增加独立样本（伪重复）。
-所以本表逐指数单独算，其他指数只用来交叉验证方向是否一致 —— 不要因为「4 个指数都命中了」就以为有了 4 倍证据。<br>
-<b>用途定位</b>：判断某个开盘是否属于「历史上容易被回补」的情形，从而避免在极端高开时追高；
-以及认识到低开后日内偏反弹。<b>它是背景参考，不是预测，也不构成投资建议。</b>`,
-  },
   automation: {
     title: '自动化状态',
     html: `<b>顶部那条状态带是什么</b>：显示两个定时任务最后一次成功运行的时间，以及「按交易日历本该跑几次、实际差了几次」。<br>
@@ -1060,13 +879,13 @@ z≥2 时四家的日内回落率是 83~100%、平均日内 −2.0~−2.8%；而
 };
 
 const panelsJs = readFileSync('panels.js', 'utf8');
-const signalJs = readFileSync('signal.js', 'utf8');
+
 const themeJs = readFileSync('theme.js', 'utf8');
 const pwaJs = readFileSync('pwa.js', 'utf8');
 const rollerJs = readFileSync('date-roller.js', 'utf8');
 const updateJs = readFileSync('update-button.js', 'utf8'); // 右下角「更新」按钮（局域网内可用）
 const autosyncJs = readFileSync('autosync.js', 'utf8'); // 发现服务端有新版本时自动刷新
-const scenarioJs = readFileSync('scenario.js', 'utf8'); // 开盘跳空历史情景参考表
+
 const touchJs = readFileSync('touch.js', 'utf8');
 const sentChartJs = readFileSync('sentiment-chart.js', 'utf8'); // 恐慌情绪散点图（面板左下方）
 // 实时信号接口地址：留空 = 用同源 /signal（本机 serve-dashboard.mjs）；
@@ -1450,9 +1269,9 @@ html[data-theme="light"] [stroke="#141821"]{stroke:#ffffff}
 ${autoHtml}
 <div class="kpis">${kpis}</div>
 
-${sigPanelHtml}
 
-${scenarioPanelHtml}
+
+
 
 <div class="panel" data-panel="intra"><div class="phead"><h2>三大指数 ${tr.days.length} 日 5 分钟线<span class="hint">${tr.days[0].slice(4, 6)}/${tr.days[0].slice(6)} ~ ${tr.days.at(-1).slice(4, 6)}/${tr.days.at(-1).slice(6)} · ${tr.days.length} 个交易日 · 近 ${tr.days.length} 日用 5 分钟档，更早的几天由 15 分钟档补齐</span></h2>
     <span class="hint">上：累计涨跌幅（区间首点为基准）· 下：每日归零（当日首点为基准）· 两图缩放与拖动联动</span></div>
@@ -1530,19 +1349,18 @@ ${statePanel}
   数据源：中证指数公司、腾讯财经、东方财富、同花顺、新浪财经、federalreserve.gov。仅呈现公开市场数据，不构成投资建议。
 </div>
 <script>window.PDESC = ${JSON.stringify(PDESC)};</script>
-<script>window.SCENARIO = ${JSON.stringify(SCENARIO)};</script>
 <script>window.SIGNAL_URL = ${JSON.stringify(SIGNAL_URL)};</script>
 <script>window.PUSHLOG = ${JSON.stringify(PUSHLOG)};</script>
 <script>window.BUILD_STAMP = ${JSON.stringify(BUILD_STAMP)};</script>
 <script>${rollerJs}</script>
-<script>${signalJs}</script>
+
 <script>${themeJs}</script>
 <script>${pwaJs}</script>
 <script>${panelsJs}</script>
 <script>${sentChartJs}</script>
 <script>${updateJs}</script>
 <script>${autosyncJs}</script>
-<script>${scenarioJs}</script>
+
 </body></html>`;
 
 writeFileSync('astock-dashboard.html', html, 'utf8');
