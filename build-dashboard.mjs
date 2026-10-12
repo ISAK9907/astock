@@ -1281,9 +1281,16 @@ html[data-theme="light"] .updpanel code{background:#e8edf6;color:#1d4ed8}
 .synctoast .synclink{color:#5b8def;cursor:pointer;text-decoration:underline}
 html[data-theme="light"] .synctoast .synclink{color:#1d4ed8}
 /* ==================== 工具二入口 ==================== */
-.toolnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 0;font-size:12px}
-.toolnav a{color:#5b8def;text-decoration:none;border:1px solid var(--line);border-radius:14px;padding:2px 10px}
-.toolnav a:hover{border-color:#5b8def}
+.toolnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 2px;font-size:12px}
+.toolnav a{color:#8fb4ff;text-decoration:none;border:1px solid #3d6fd6;background:rgba(91,141,239,.14);
+  border-radius:15px;padding:3px 12px;font-weight:600}
+.toolnav a:hover{border-color:#8fb4ff}
+html[data-theme="light"] .toolnav a{color:#1d4ed8;border-color:#93b4f0;background:rgba(91,141,239,.10)}
+.toolfoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 0;padding:10px 12px;
+  background:var(--card);border:1px solid #3d6fd6;border-radius:9px;font-size:12.5px}
+.toolfoot a{color:#8fb4ff;text-decoration:none;font-weight:700;font-size:13.5px}
+.toolfoot span{color:var(--dim);font-size:11.5px}
+html[data-theme="light"] .toolfoot a{color:#1d4ed8}
 /* ==================== 自动化状态带 ==================== */.autostrip{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0 10px;
   background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:11px}
 .autostrip.dim{color:var(--dim)}
@@ -1512,6 +1519,16 @@ ${statePanel}
   </div>
 </div>
 <div class="prestore" id="prestore" hidden><b>已隐藏的面板</b><div id="prestoreList"></div></div>
+
+<!-- 工具二入口（页脚版）：放在最底部，因为「看板下没有入口」那次反馈说明
+     只放在标题下面容易被划过去。同一页给两个位置，哪个顺手用哪个。 -->
+<div class="toolfoot">
+  <a href="plan.html">持仓计划台 →</a>
+  <span>估值区间 + 阶段标签 + 日历过滤器 · 只回答「我现在该不该动」，不预测点位</span>
+</div>
+<div class="foot" style="margin-top:6px">
+  数据源：中证指数公司、腾讯财经、东方财富、同花顺、新浪财经、federalreserve.gov。仅呈现公开市场数据，不构成投资建议。
+</div>
 <script>window.PDESC = ${JSON.stringify(PDESC)};</script>
 <script>window.SCENARIO = ${JSON.stringify(SCENARIO)};</script>
 <script>window.SIGNAL_URL = ${JSON.stringify(SIGNAL_URL)};</script>
