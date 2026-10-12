@@ -1,112 +1,102 @@
-// 「持仓计划台」渲染层。数据来自 build-plan.mjs 内联的 window.PLAN（plan-analysis.mjs 产出）。
+// 「持仓计划台」渲染层。数据来自 build-plan.mjs 内联的 window.PLAN。
 //
-// 设计原则（和日更看板刻意相反）：
-//   · 不回答「今天发生了什么」，只回答「我现在该不该动」
-//   · 不给点位预测、不给买卖信号，只给**区间位置**和**流程检查项**
-//   · 阶段标签是**描述**不是信号：它带 10 个交易日迟滞，变化速度匹配「一周看几次」
-//   · 页面所有数字都可以被独立复算（分位/区间），没有黑箱评分
+// 页面结构是**按纪律优先级排的**，不是按信息量：
+//   ① 现在允许做什么（最大字号，一眼看到就够）
+//   ② 必须逐条回答的检查项（大号）
+//   ③ ETF 一览（**压缩成一张表**，一行一个标的，点开才看细节）
+//   ④ 我的持仓（图片上传）
+//   ⑤ 日历（紧凑）
+//   ⑥ 为什么这套规则这么定（小字，可折叠）
+//
+// 设计原则（和日更看板刻意相反）：不回答「今天发生了什么」，只回答「我现在该不该动」。
+// 不给点位预测、不给买卖信号，只执行预先定好的规则并强制检查。
 (function () {
   const P = window.PLAN;
   if (!P) return;
-  const byId = (id) => document.getElementById(id);
+  const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-
-  /** 分位 → 颜色：<30 便宜（冷绿）· 30~70 中性 · >70 贵（暖橙） */
-  const bandColor = (v) => (v == null ? '#5b6472' : v <= 30 ? '#2f9e6b' : v >= 70 ? '#e0803a' : '#5b8def');
-  const bandName = (v) => (v == null ? '无数据' : v <= 30 ? '便宜区' : v >= 70 ? '偏贵区' : '中性区');
-
-  /** 分位条：三段底色 + 当前位置游标 */
-  function pctBar(label, v, note) {
-    if (v == null) return `<div class="barrow"><span class="bl">${esc(label)}</span><div class="bar empty"><i>无数据</i></div><span class="bv">—</span></div>`;
-    const c = bandColor(v);
-    return (
-      `<div class="barrow"><span class="bl">${esc(label)}</span>` +
-      `<div class="bar"><span class="z z1"></span><span class="z z2"></span><span class="z z3"></span>` +
-      `<span class="curl" style="left:${v}%;background:${c}"></span></div>` +
-      `<span class="bv" style="color:${c}">${v}%</span></div>` +
-      (note ? `<div class="barnote">${esc(note)}</div>` : '')
-    );
-  }
-
-  // ---------------- 顶部总览 ----------------
+  const D = P.discipline;
   const m = P.currentMonth;
-  const earn = P.earnings?.[String(m)];
-  byId('ptop').innerHTML =
-    `<div class="tkline">数据截至 <b>${esc(P.today)}</b> · 标的 ${P.indexes.length} 个 · 分位窗口为各指数 PE 可得区间</div>`;
 
-  // ---------------- 估值区间 ----------------
-  byId('pval').innerHTML = P.indexes
-    .map((x) => {
-      const d = x.div;
-      const divCls = !d ? '' : d.kind === 'priceLowPeHigh' ? 'warn' : d.kind === 'priceHighPeLow' ? 'good' : 'flat';
-      const divIcon = !d ? '' : d.kind === 'priceLowPeHigh' ? '⚠️' : d.kind === 'priceHighPeLow' ? '✓' : '＝';
-      return (
-        `<div class="card">` +
-        `<div class="chead"><span class="cname">${esc(x.name)}</span><span class="ctag">${esc(x.tag)}</span>` +
-        `<span class="cnum">${x.last.c.toFixed(2)}</span>` +
-        `<span class="cpe">PE ${x.last.pe == null ? '—' : x.last.pe.toFixed(2)}</span></div>` +
-        pctBar('价格分位', x.pct.priceCommon, `窗口 ${x.peWindow.start} ~ ${x.peWindow.end}（${x.peWindow.priceN} 天）`) +
-        pctBar('估值分位', x.pct.pe, `PE 区间 ${x.peRange.min} ~ ${x.peRange.max}，中位 ${x.peRange.med}（n=${x.peWindow.n}）`) +
-        (d ? `<div class="div ${divCls}">${divIcon} ${esc(d.text)}（差 ${d.gap > 0 ? '+' : ''}${d.gap}pp）</div>` : '') +
-        `<div class="cfoot">长期位置：全历史价格分位 <b>${x.pct.priceFull}%</b>（n=${x.pct.fullN}） · ` +
-        `阶段 <b>${esc(x.phase.label)}</b> 已持续 ${x.phase.labelDays} 天` +
-        (x.phase.raw !== x.phase.label ? `（原始状态已变为「${esc(x.phase.raw)}」，未满 ${P.hyst} 天未确认）` : '') +
-        `</div></div>`
-      );
-    })
-    .join('');
+  // ---------------- ① 许可横幅（最大） ----------------
+  $('pPerm').innerHTML =
+    `<div class="perm" style="border-color:${D.permission.color}">` +
+    `<div class="permk" style="color:${D.permission.color}">现在允许做什么</div>` +
+    `<div class="permt" style="color:${D.permission.color}">${esc(D.permission.title)}</div>` +
+    `<div class="permd">${esc(D.permission.detail)}</div>` +
+    `</div>`;
 
-  // ---------------- 阶段标签说明 ----------------
-  byId('pphase').innerHTML =
-    `<div class="hintbox">` +
-    `<b>先看这条再读上面的标签</b>：我用 16 年数据检验过「弱势下跌 / 支撑 / 反转 / 上升」这套划分，` +
-    `<b>它没有稳定的预测能力</b> —— 上证与中证2000 给出相反答案（上证「支撑」最差、中证2000「支撑」最好），` +
-    `而且几乎每一格在前半段/后半段之间翻号。所以它是<b>标签，不是信号</b>。<br>` +
-    `它的唯一用途是触发一次<b>不需要预测的检查</b>：处于「弱势下跌」时按档位加仓之前，先回答「当初买它的理由还成立吗」。` +
-    `这是防止「机械补仓补到基本面已经坏掉的东西上」——你提的季报暴雷真正伤人的方式。<br>` +
-    `<span class="dim">标签要求原始状态连续成立 ≥ ${P.hyst} 个交易日才切换：原始状态中位只持续 3~5 天，` +
-    `若不迟滞，你一周看几次，看到的永远是已经过期的状态。</span></div>`;
+  // ---------------- ② 纪律清单（大号） ----------------
+  const icon = { act: '▶', wait: '■', check: '？', warn: '⚠' };
+  $('pCheck').innerHTML =
+    D.checklist
+      .map((c) => `<div class="chk ${c.kind}"><span class="chki">${icon[c.kind] ?? '·'}</span><span>${esc(c.text)}</span></div>`)
+      .join('') +
+    `<div class="dim" style="margin-top:8px;font-size:11.5px">以上清单来自你预先定下的规则；工具只负责执行和提醒，不判断规则对不对。</div>`;
 
-  // ---------------- 日历 ----------------
-  const cur = P.indexes[0] ? P.seasonality[P.indexes[0].code] : null;
-  const monthRows = [];
+  // ---------------- ③ ETF 一览（压缩表，点行展开） ----------------
+  const zname = { cheap: '便宜', mid: '中性', rich: '偏贵', unknown: '—' };
+  const zcolor = { cheap: '#2f9e6b', mid: '#5b8def', rich: '#e0803a', unknown: '#5b6472' };
+  const mini = (v) => {
+    if (v == null) return '<span class="dim">—</span>';
+    const c = v <= 30 ? '#2f9e6b' : v >= 70 ? '#e0803a' : '#5b8def';
+    return `<span class="mb"><i style="left:${v}%"></i></span><b style="color:${c}">${v}</b>`;
+  };
+  $('pTable').innerHTML =
+    `<table class="etf"><tr><th>标的</th><th>点位</th><th>价格</th><th>估值</th><th>区间</th></tr>` +
+    P.indexes
+      .map((x, i) => {
+        const z = x.zone ?? 'unknown';
+        return (
+          `<tr class="etfr" data-i="${i}"><td><b>${esc(x.name)}</b><span class="dim tag">${esc(x.tag)}</span></td>` +
+          `<td class="num">${x.last.c.toFixed(1)}</td><td class="pctc">${mini(x.pct.priceCommon)}</td><td class="pctc">${mini(x.pct.pe)}</td>` +
+          `<td><span class="zb" style="color:${zcolor[z]};border-color:${zcolor[z]}">${zname[z]}</span></td></tr>` +
+          `<tr class="etfd" data-d="${i}" hidden><td colspan="5">` +
+          `<div class="dim" style="line-height:1.8">PE <b>${x.last.pe?.toFixed(2) ?? '—'}</b>（区间 ${x.peRange.min}~${x.peRange.max}，中位 ${x.peRange.med}）· 窗口 ${x.peWindow.start}~${x.peWindow.end}（PE 样本 ${x.peWindow.n} 天）<br>` +
+          `全历史价格分位 <b>${x.pct.priceFull}%</b>（n=${x.pct.fullN}）· 阶段 <b>${esc(x.phase.label)}</b> 已持续 ${x.phase.labelDays} 天<br>` +
+          (x.div ? `<span style="color:${x.div.kind === 'priceLowPeHigh' ? '#e0803a' : x.div.kind === 'priceHighPeLow' ? '#2f9e6b' : 'var(--dim)'}">${esc(x.div.text)}（差 ${x.div.gap > 0 ? '+' : ''}${x.div.gap}pp）</span>` : '') +
+          `</div></td></tr>`
+        );
+      })
+      .join('') +
+    `</table>` +
+    `<div class="dim" style="margin-top:6px;font-size:11px">点任意一行展开细节。分位窗口 = 该指数 PE 可得的区间（两个分位用同一窗口，否则「分歧」是假象）。</div>`;
+
+  for (const r of document.querySelectorAll('.etfr')) {
+    r.addEventListener('click', () => {
+      const d = document.querySelector(`.etfd[data-d="${r.dataset.i}"]`);
+      if (d) d.hidden = !d.hidden;
+    });
+  }
+
+  // ---------------- ⑤ 日历（紧凑） ----------------
+  const months = [];
   for (let mm = 1; mm <= 12; mm++) {
-    const cell = [];
-    let anyN = 0;
-    for (const x of P.indexes) {
+    const cells = P.indexes.map((x) => {
       const mo = P.seasonality[x.code]?.months?.[mm - 1];
-      if (!mo?.n) { cell.push('—'); continue; }
-      anyN = Math.max(anyN, mo.n);
-      const neg = mo.med < 0;
-      cell.push(`<span class="${neg ? 'neg' : 'pos'}">${mo.med >= 0 ? '+' : ''}${mo.med}%</span>`);
-    }
-    monthRows.push(
-      `<tr class="${mm === m ? 'cur' : ''}"><td>${mm} 月${P.earnings?.[String(mm)] ? ' <span class="star">★</span>' : ''}</td><td>${cell.join(' / ')}</td><td>${anyN ? anyN + ' 年' : '—'}</td></tr>`,
+      return mo?.n ? `<i class="${mo.med < 0 ? 'neg' : 'pos'}">${mo.med >= 0 ? '+' : ''}${mo.med}</i>` : '<i class="dim">—</i>';
+    });
+    months.push(
+      `<tr class="${mm === m ? 'cur' : ''}"><td>${mm}${P.earnings?.[String(mm)] ? '<span class="star">★</span>' : ''}</td><td class="mcells">${cells.join('')}</td></tr>`,
     );
   }
-  byId('pcal').innerHTML =
-    `<div class="curmon">当前 ${m} 月${earn ? ` · <b class="star">★ ${esc(earn)}</b>` : ''}</div>` +
-    `<table class="mtbl"><tr><th>月份</th><th>各标的中位数（当月开→当月收）</th><th>样本</th></tr>${monthRows.join('')}</table>` +
-    `<div class="hintbox">` +
-    `<b>★ = 法定财报截止月</b>（4/30 年报+一季报、8/31 中报、10/31 三季报）。` +
-    `但要先说清楚：<b>「暴雷集中在截止日」在指数层面不成立</b> —— 我测过各月最后 5 个交易日，` +
-    `财报截止月 +0.15%、其他 9 个月 +0.04%，几乎没差别。指数有几千只股票互相分散。<br>` +
-    `<b>⚠️ 但如果你拿的是个股，这个数据对你完全不适用</b>：少数几只股票的财报风险是<b>不分散的</b>。` +
-    `所以日历对 ETF 是背景倾向，<b>对个股是硬提醒</b>。<br>` +
-    `<span class="dim">另注意 12 月–1 月：中证2000 的 12 月胜率只有 33%、中位数 −3.13%，而同期上证 +0.31% ——` +
-    `这不是季节性，是<b>风格切换</b>（年末机构排名/估值切换，大盘稳、小盘杀）。如果你的标的偏小盘，这个比 4 月危险。<br>` +
-    `还有多重比较问题：这里同时看了 12 个月，按 Bonferroni 要 p&lt;0.0036 才算得住，月度数 n≈13~16 基本都到不了。` +
-    `<b>所以整张表只能当背景倾向，不能当买卖信号。</b></span></div>`;
+  $('pCal').innerHTML =
+    `<div class="curmon">当前 <b>${m}</b> 月${P.earnings?.[String(m)] ? ` · <span class="star">★ ${esc(P.earnings[String(m)])}</span>` : ''}</div>` +
+    `<table class="mtbl"><tr><th>月</th><th>${P.indexes.map((x) => x.name.replace('指数', '').replace('中证', '')).join(' / ')}</th></tr>${months.join('')}</table>` +
+    `<div class="dim" style="margin-top:6px;font-size:11px">当月开→当月收的中位数（%）。★ = 法定财报截止月。<b>指数层面看不出月末暴雷效应（已实测），但个股的财报风险是不分散的</b> —— 日历对 ETF 只是背景倾向，对个股是硬提醒。同时看 12 个月存在多重比较，这张表不能当买卖信号。</div>`;
 
-  // ---------------- 持仓（预留） ----------------
-  byId('phold').innerHTML =
-    `<div class="hintbox">` +
-    `<b>这一区先留空</b>。按你的选择，持仓数据还没接。<br>` +
-    `定好的方案是：<b>不存「你现在持有什么」，而存「你买了什么」</b> —— ` +
-    `导入交割单 CSV，由成交记录算出持仓与成本。理由：成交记录是原始凭证、可以和券商对账单逐笔核对；` +
-    `持仓是它的函数、可复算。手填一个持仓数一旦哪天改错，后面所有判断都建立在一个错数字上，而你自己发现不了。<br>` +
-    `<b>⚠️ 数据隔离</b>：这个页面部署在<b>公开仓库</b>上，所以持仓<b>只会存在你这台设备的浏览器里</b>` +
-    `（localStorage，键名 <code>astock.holdings.v1</code>），仓库里只有工具代码，一个字节的持仓都不会上行。` +
-    `代价是换设备/清缓存会丢，需要导出备份 —— 这个导出功能会和持仓一起做。` +
-    `</div>`;
+  // ---------------- ⑥ 说明（可折叠） ----------------
+  $('pWhy').innerHTML =
+    `<details><summary>为什么阶段标签只当「标签」用，不当信号</summary>` +
+    `<div class="hintbox" style="margin-top:8px">` +
+    `我用 16 年数据检验过「弱势下跌 / 支撑 / 反转 / 上升」这套划分，<b>它没有稳定的预测能力</b>：` +
+    `上证与中证2000 给出相反答案（上证「支撑」最差、中证2000「支撑」最好），而且几乎每一格在前半段/后半段之间翻号。` +
+    `原始状态中位只持续 3~5 天、每年切换 9 次 —— 你一周看几次，看到的永远是已经过期的状态。` +
+    `所以现在它带 <b>${P.hyst} 个交易日迟滞</b>，且只用来触发一次<b>不需要预测的检查</b>：` +
+    `处于「弱势下跌」时加仓前先回答「当初买它的理由还成立吗」。` +
+    `<br><br><b>规则阈值（可改）</b>：便宜 = PE 与价格分位都 ≤ ${D.rules.cheapPe}%；贵 = PE ≥ ${D.rules.richPe}% 或价格 ≥ ${D.rules.richPrice}%；` +
+    `有 ${D.rules.stopCount} 个标的算贵就整体停止加仓。两边都取保守：便宜要两个条件同时满足，贵只要一个条件满足。` +
+    `</div></details>`;
+
+  $('pTop').innerHTML = `数据截至 <b>${esc(P.today)}</b> · 标的 ${P.indexes.length} 个 · 分位窗口见各标的细节`;
 })();

@@ -147,15 +147,81 @@ for (const [code, s] of Object.entries(V.series)) {
   seasonality[code] = { name: s.name, months, base: { med: +median(all).toFixed(2), n: all.length } };
 }
 
-// 财报窗口（法定截止日）—— 对个股是真风险，对指数几乎无影响（已在会话中验证过）
+// ==================== 纪律层 ====================
+// 工具的首要目的是**执行纪律**，不是提供信息。所以这里把市场数据翻译成
+// 「现在允许做什么 / 必须先回答什么」，而不是再堆一层数字。
+//
+// ⚠️ 下面的阈值是**可调规则**，不是真理。工具只负责按规则执行和提醒，
+//    不判断这套规则对不对 —— 那必须由使用者自己预先定好，否则临场改主意正是要防的东西。
+// 法定财报截止月：年报+一季报 4/30、中报 8/31、三季报 10/31。
+// ⚠️ 必须定义在纪律层**之前**：它是 const，在后面定义再引用会抛暂时性死区（这个坑这次会话踩了三次）。
 const EARNINGS = {
   4: '年报 + 一季报截止（4/30）',
   8: '中报截止（8/31）',
   10: '三季报截止（10/31）',
 };
+const CUR_MONTH = now.getMonth() + 1;
+
+const RULES = {
+  cheapPe: 30, cheapPrice: 30,      // 「便宜」要两个分位都 ≤ 阈值（保守）
+  richPe: 70, richPrice: 85,        // 「贵」只要任一分位够高就算（保守）
+  stopCount: 3,                     // 有几个标的算贵就整体停止加仓
+};
+
+/** 区间：便宜要有两个条件都满足，贵只要一个条件满足 —— 两边都取保守 */
+function zoneOf(x) {
+  const pe = x.pct.pe, pr = x.pct.priceCommon;
+  if (pe == null || pr == null) return 'unknown';
+  if (pe <= RULES.cheapPe && pr <= RULES.cheapPrice) return 'cheap';
+  if (pe >= RULES.richPe || pr >= RULES.richPrice) return 'rich';
+  return 'mid';
+}
+
+const zones = out.indexes.map((x) => ({ code: x.code, name: x.name, zone: zoneOf(x), pe: x.pct.pe, price: x.pct.priceCommon }));
+for (const x of out.indexes) x.zone = zones.find((z) => z.code === x.code).zone;
+
+const nCheap = zones.filter((z) => z.zone === 'cheap').length;
+const nRich = zones.filter((z) => z.zone === 'rich').length;
+const cheapNames = zones.filter((z) => z.zone === 'cheap').map((z) => z.name);
+const richNames = zones.filter((z) => z.zone === 'rich').map((z) => z.name);
+
+let permission;
+if (nCheap > 0) {
+  permission = {
+    level: 'allow', color: '#2f9e6b', title: '允许加仓（仅限便宜区）',
+    detail: `${cheapNames.join('、')} 落在便宜区（PE 与价格分位都 ≤ ${RULES.cheapPe}%）。只对这几个标的按档位加，其余标的仍不许加。`,
+  };
+} else if (nRich >= RULES.stopCount) {
+  permission = {
+    level: 'stop', color: '#e0803a', title: '禁止加仓',
+    detail: `没有标的落在便宜区，而有 ${nRich} 个已进入偏贵区（${richNames.join('、')}）。这段时间只持有，不加新仓 —— 想加也必须等到有标的回到中性区。`,
+  };
+} else {
+  permission = {
+    level: 'hold', color: '#5b8def', title: '观望，不新增仓位',
+    detail: `便宜区 0 个、偏贵区 ${nRich} 个。没有值得下手的区间，也没有必须撤退的理由。`,
+  };
+}
+
+// 纪律检查清单：每一条都必须是「不需要预测」就能回答的问题
+const checklist = [];
+if (permission.level === 'allow') checklist.push({ kind: 'act', text: `只加「${cheapNames.join('、')}」，不加其他标的` });
+else checklist.push({ kind: 'wait', text: '今天不买入（规则不允许），持仓不动即可' });
+
+const weak = out.indexes.filter((x) => x.phase.label === '弱势下跌');
+if (weak.length) checklist.push({ kind: 'check', text: `${weak.map((x) => x.name).join('、')} 处于「弱势下跌」：加仓前先回答「当初买它的理由还成立吗」` });
+
+const traps = out.indexes.filter((x) => x.div?.kind === 'priceLowPeHigh');
+if (traps.length) checklist.push({ kind: 'warn', text: `⚠️ ${traps.map((x) => x.name).join('、')} 出现「价格低但估值高」—— 盈利在恶化，这是价值陷阱的典型形态` });
+
+if (EARNINGS[CUR_MONTH]) checklist.push({ kind: 'check', text: `${CUR_MONTH} 月是${EARNINGS[CUR_MONTH]}：个股不加新仓，留意持仓个股的预约披露日` });
+if ([12, 1].includes(CUR_MONTH)) checklist.push({ kind: 'warn', text: '12–1 月小盘显著弱（中证2000 十二月胜率 33%）：持有小盘的话别在这个窗口加仓' });
+
+out.discipline = { permission, checklist, zones, rules: RULES };
 out.seasonality = seasonality;
+
 out.earnings = EARNINGS;
-out.currentMonth = now.getMonth() + 1;
+out.currentMonth = CUR_MONTH;
 
 writeFileSync('plan-data.json', JSON.stringify(out), 'utf8');
 const kb = (JSON.stringify(out).length / 1024).toFixed(0);

@@ -1,12 +1,12 @@
 // 生成「持仓计划台」plan.html（单文件，含内联数据与脚本）
 //
-// 和日更看板的关系：**刻意分开**。看板回答「今天发生了什么」，本页回答「我现在该不该动」。
-// 前者的信息密度是特征，后者必须极简 —— 因为使用者不能盯盘，页面上的每一个数字
-// 都应该能被独立复算，且不要求他在特定时刻打开。
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+// 和日更看板的关系：**刻意分开**。看板回答「今天发生了什么」，本页执行纪律。
+// 页面按纪律优先级排：许可 → 检查清单 → ETF 一览（压缩）→ 持仓 → 日历 → 说明。
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const PLAN = JSON.parse(readFileSync('plan-data.json', 'utf8'));
 const planJs = readFileSync('plan.js', 'utf8');
+const holdJs = readFileSync('plan-holdings.js', 'utf8');
 const buildStamp = new Date().toISOString();
 
 const html = `<!doctype html><html lang="zh-CN"><head>
@@ -19,75 +19,131 @@ const html = `<!doctype html><html lang="zh-CN"><head>
 :root{--bg:#0f131a;--card:#171c25;--line:#252c39;--fg:#e6eaf2;--dim:#7b8698;--sect:#39414f}
 html[data-theme="light"]{--bg:#f4f6fa;--card:#fff;--line:#e2e7ef;--fg:#1b2330;--dim:#6b7688;--sect:#c9d2e0}
 *{box-sizing:border-box}
-body{margin:0;padding:12px 12px 40px;background:var(--bg);color:var(--fg);
-  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-h1{font-size:17px;margin:4px 0 2px}
-h2{font-size:13px;margin:22px 0 8px;padding-left:8px;border-left:3px solid #5b8def;color:var(--fg)}
+body{margin:0;padding:14px 12px 48px;background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+h1{font-size:18px;margin:2px 0 2px}
+h2{font-size:13.5px;margin:22px 0 8px;padding-left:8px;border-left:3px solid #5b8def;color:var(--fg);letter-spacing:.5px}
 .tkline{color:var(--dim);font-size:11.5px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-bottom:9px}
-.chead{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;margin-bottom:8px}
-.cname{font-weight:700;font-size:14.5px}
-.ctag{font-size:10.5px;color:var(--dim);border:1px solid var(--line);border-radius:9px;padding:1px 7px}
-.cnum{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
-.cpe{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
-.barrow{display:flex;align-items:center;gap:7px;margin-bottom:3px}
-.bl{font-size:11px;color:var(--dim);width:52px;flex:none}
-.bar{position:relative;flex:1;height:9px;border-radius:5px;overflow:hidden}
-.bar.empty{background:var(--line)}
-.bar.empty i{font-style:normal;font-size:9px;color:var(--dim);padding-left:6px;line-height:9px}
-.bar .z{position:absolute;top:0;bottom:0}
-.bar .z1{left:0;width:30%;background:rgba(47,158,107,.24)}
-.bar .z2{left:30%;width:40%;background:rgba(91,141,239,.16)}
-.bar .z3{left:70%;width:30%;background:rgba(224,128,58,.22)}
-.curl{position:absolute;top:-2px;width:4px;height:13px;border-radius:2px;transform:translateX(-2px)}
-.bv{font-size:11.5px;font-variant-numeric:tabular-nums;width:42px;text-align:right;flex:none;font-weight:600}
-.barnote{font-size:10px;color:var(--dim);margin:0 0 6px 59px}
-.div{margin-top:7px;font-size:12px;padding:6px 8px;border-radius:7px;line-height:1.55}
-.div.good{background:rgba(47,158,107,.12);border-left:2px solid #2f9e6b}
-.div.warn{background:rgba(224,128,58,.14);border-left:2px solid #e0803a}
-.div.flat{background:rgba(91,141,239,.10);border-left:2px solid #5b8def}
-.cfoot{margin-top:7px;font-size:10.5px;color:var(--dim)}
-.hintbox{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--sect);
-  border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.75;color:var(--fg)}
-.hintbox b{color:var(--fg)}
-.dim{color:var(--dim)}
-.curmon{font-size:13px;margin-bottom:7px}
-.star{color:#e0803a}
-table.mtbl{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
-table.mtbl th{color:var(--dim);font-weight:500;text-align:left;padding:4px 5px;border-bottom:1px solid var(--line);font-size:11px}
+.topnav{font-size:12px;margin:2px 0 0}
+.topnav a{color:#5b8def;text-decoration:none}
+
+/* ① 许可横幅 —— 全页最大，目的就是让你一眼看到就够 */
+.perm{background:var(--card);border:2px solid;border-radius:12px;padding:14px 15px}
+.permk{font-size:11.5px;letter-spacing:2px;opacity:.85}
+.permt{font-size:27px;font-weight:800;line-height:1.25;margin:4px 0 8px;letter-spacing:.5px}
+.permd{font-size:13px;color:var(--fg);opacity:.9;line-height:1.75}
+
+/* ② 纪律清单 —— 大号 */
+.chk{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);
+  border-radius:9px;padding:11px 12px;margin-bottom:8px;font-size:15px;line-height:1.6}
+.chki{flex:none;font-size:14px;width:18px;text-align:center;opacity:.9}
+.chk.act{border-left:4px solid #2f9e6b}
+.chk.wait{border-left:4px solid #5b8def}
+.chk.check{border-left:4px solid #e0b23a}
+.chk.warn{border-left:4px solid #e0803a;background:rgba(224,128,58,.10)}
+
+/* ③ ETF 压缩表 */
+table.etf{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+table.etf th{color:var(--dim);font-weight:500;text-align:left;padding:5px 4px;border-bottom:1px solid var(--line);font-size:11px}
+table.etf td{padding:6px 4px;border-bottom:1px solid var(--line)}
+table.etf tr.etfr{cursor:pointer}
+table.etf tr.etfr:active{background:rgba(91,141,239,.08)}
+table.etf td.num{text-align:right;font-weight:600}
+table.etf td.pctc{white-space:nowrap}
+table.etf .tag{font-size:10px;margin-left:4px}
+.mb{position:relative;display:inline-block;width:34px;height:7px;border-radius:4px;overflow:hidden;
+  background:linear-gradient(90deg,rgba(47,158,107,.30) 0 30%,rgba(91,141,239,.20) 30% 70%,rgba(224,128,58,.28) 70% 100%);
+  vertical-align:middle;margin-right:5px}
+.mb i{position:absolute;top:-2px;width:3px;height:11px;background:var(--fg);border-radius:2px;transform:translateX(-1px)}
+.zb{font-size:11px;border:1px solid;border-radius:9px;padding:1px 7px;white-space:nowrap}
+tr.etfd td{background:rgba(91,141,239,.05);padding:9px 8px}
+
+/* ⑤ 日历 */
+.curmon{font-size:13px;margin-bottom:8px}
+.star{color:#e0803a;margin-left:3px}
+table.mtbl{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
+table.mtbl th{color:var(--dim);font-weight:500;text-align:left;padding:4px 5px;border-bottom:1px solid var(--line)}
 table.mtbl td{padding:4px 5px;border-bottom:1px solid var(--line)}
 table.mtbl tr.cur{background:rgba(91,141,239,.10)}
 table.mtbl tr.cur td:first-child{font-weight:700}
-.pos{color:#e08a6a}
-.neg{color:#4fbf8f}
+.mcells i{font-style:normal;display:inline-block;min-width:44px;text-align:right;padding-right:6px}
+.pos{color:#e08a6a}.neg{color:#4fbf8f}
 html[data-theme="light"] .pos{color:#c2410c}
 html[data-theme="light"] .neg{color:#0f7a52}
+
+/* ④ 持仓 */
+.hbox{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px;margin-bottom:9px}
+.hbox label.hlb{display:block;font-size:12.5px;margin-bottom:6px;color:var(--fg)}
+input[type=file]{font-size:12.5px;color:var(--dim);width:100%}
+#holdImg{max-width:100%;border-radius:8px;margin-top:9px;border:1px solid var(--line)}
+textarea#holdText{width:100%;min-height:110px;background:var(--bg);color:var(--fg);border:1px solid var(--line);
+  border-radius:7px;padding:8px;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;margin-top:8px}
+.hbtn{margin-top:9px;background:var(--line);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:8px 14px;font-size:13.5px;font-family:inherit;cursor:pointer}
+.hbtn.primary{background:#2f6fe0;border-color:#2f6fe0;color:#fff;font-weight:700;padding:11px 16px;font-size:15px}
+.hrow{display:grid;grid-template-columns:64px 1fr 62px 62px 62px 30px;gap:4px;align-items:center;margin-bottom:4px}
+.hrow.hhead{font-size:10.5px;color:var(--dim);margin-bottom:2px}
+.hrow span{font-size:12px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrow input{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:5px;
+  padding:5px 4px;font-size:12.5px;font-family:inherit;font-variant-numeric:tabular-nums}
+.hdel{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:0}
+.hstat{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;margin-bottom:9px}
+.hstat b{font-variant-numeric:tabular-nums}
+.hsum{font-size:12px;color:var(--dim);margin:8px 0 4px}
+.hintbox{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--sect);
+  border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.75}
+details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
+.dim{color:var(--dim)}
 code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
-.topnav{display:flex;gap:8px;margin:6px 0 0;font-size:12px}
-.topnav a{color:#5b8def;text-decoration:none}
 </style></head><body>
 <h1>持仓计划台</h1>
 <div class="topnav"><a href="index.html">← 回到日更看板</a></div>
-<div id="ptop" class="tkline" style="margin-top:6px"></div>
+<div id="pTop" class="tkline" style="margin-top:5px"></div>
 
-<h2>估值区间</h2>
-<div id="pval"></div>
+<h2>① 现在允许做什么</h2>
+<div id="pPerm"></div>
 
-<h2>阶段标签怎么用（先读这段）</h2>
-<div id="pphase"></div>
+<h2>② 必须逐条回答</h2>
+<div id="pCheck"></div>
 
-<h2>日历过滤器</h2>
-<div id="pcal"></div>
+<h2>③ ETF 一览</h2>
+<div id="pTable"></div>
 
-<h2>持仓（预留）</h2>
-<div id="phold"></div>
+<h2>④ 我的持仓</h2>
+<div class="hbox" id="holdSaved"></div>
+<div class="hbox">
+  <label class="hlb"><b>上传持仓截图</b>（图片只在你手机里本地预览，不会上传到任何服务器）</label>
+  <input type="file" id="holdFile" accept="image/*">
+  <img id="holdImg" hidden alt="持仓截图预览">
+  <div class="dim" id="holdImgHint" hidden style="margin-top:8px;font-size:11.5px;line-height:1.7">
+    上图仅供你对照阅读。<b>为什么不做自动 OCR</b>：iOS 实况文本 / 安卓相册文字识别是系统级的，对中文小字体比浏览器里能跑的 OCR 准得多。
+    <b>做法</b>：在手机相册里对截图用「提取文字」，把结果贴到下面框里即可。
+  </div>
+  <textarea id="holdText" placeholder="把手机「提取文字」的结果贴到这里（支持表头列名 / Tab / 逗号 / 多空格分隔，也支持逐条分行的格式）"></textarea>
+  <button class="hbtn" id="holdParse" type="button">解析</button>
+  <button class="hbtn" id="holdAdd" type="button">手动加一行</button>
+  <div class="dim" id="holdParseState" style="margin-top:8px;font-size:12px"></div>
+</div>
+<div class="hbox" id="holdDraft"></div>
+<div class="dim" style="font-size:11.5px;line-height:1.8;margin-top:-2px">
+  ⚠️ 解析结果<b>必须逐行确认后再保存</b>。持仓是全部判断的地基（占比、已投档位都靠它），
+  识别错一个数字不会报错，只会静默污染后面所有结论。<br>
+  数据只存在<b>你这台设备的浏览器</b>里（<code>astock.holdings.v1</code>），仓库是公开的，持仓一个字节都不会上行。<br>
+  截图里的「现价/盈亏」是<b>截图那一刻</b>的值，本页不假装它是实时行情。
+</div>
+
+<h2>⑤ 日历过滤器</h2>
+<div id="pCal"></div>
+
+<h2>⑥ 规则说明</h2>
+<div id="pWhy"></div>
 
 <script>window.PLAN = ${JSON.stringify(PLAN)};</script>
 <script>${planJs}</script>
+<script>${holdJs}</script>
 <script>window.PLAN_BUILD = ${JSON.stringify(buildStamp)};</script>
 </body></html>`;
 
 writeFileSync('plan.html', html, 'utf8');
 writeFileSync('version-plan.json', JSON.stringify({ generatedAt: buildStamp, kind: 'plan' }), 'utf8');
-console.log(`wrote plan.html  ${(html.length / 1024).toFixed(1)} KB  标的 ${PLAN.indexes.length} 个  数据截至 ${PLAN.today}`);
-if (!existsSync('manifest-plan.webmanifest')) console.log('  （未找到 manifest-plan.webmanifest，先不影响）');
+console.log(`wrote plan.html  ${(html.length / 1024).toFixed(1)} KB  标的 ${PLAN.indexes.length} 个  数据截至 ${PLAN.today}  许可 ${PLAN.discipline?.permission?.level}`);
