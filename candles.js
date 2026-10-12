@@ -19,7 +19,7 @@
   // 导致 drawCross() 一旦真的悬停就抛 ReferenceError（准线画了但卡片不出现、联动也发不出去）。
   const DT = window.DTDATA || {};
   const TIERS = window.DTTIERS || [];
-  // 档位门槛挂在**情绪分 sent** 上（前 5%/3%/1%），不是绝对严重度分 score ——
+  // 档位门槛挂在**恐慌分位 sent** 上（前 5%/3%/1%），不是绝对严重度分 score ——
   // score 无上界，三年窗口里最惨的一天能到 46.9，会把档位撑变形。
   const daySent = (d) => (DT[d] && DT[d].sent != null ? DT[d].sent : null);
   const tierColor = (s) => {
@@ -334,7 +334,7 @@
         `<div><i style="background:#5b8def"></i><span class="n">成交量</span><b>${fmtV(r.v)}</b></div>` +
         (dv
           ? `<div class="sep"></div>` +
-            `<div><i style="background:${col2}"></i><span class="n">恐慌情绪</span><b>${dv.sent == null ? dv.score : dv.sent}</b></div>` +
+            `<div><i style="background:${col2}"></i><span class="n">恐慌分位</span><b>${dv.sent == null ? dv.score : dv.sent}</b></div>` +
             `<div><i style="background:${col2}"></i><span class="n">跌停家数</span><b>${dv.dt}</b></div>` +
             `<div><i style="background:${col2}"></i><span class="n">市值占比</span><b>${dv.cap.toFixed(2)}%</b></div>` +
             `<div><i style="background:${col2}"></i><span class="n">权重股跌停</span><b>${dv.mem}</b></div>` +

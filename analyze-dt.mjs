@@ -47,7 +47,11 @@ for (const d of allDates) {
   // 恐慌类型：按跌停股的市值结构分类
   const sBig = v.dt ? v.big / v.dt : 0;
   const sSmall = v.dt ? v.small / v.dt : 0;
-  const type = v.dt < 10 ? null : sSmall >= 0.65 ? '微盘踩踏' : sBig >= 0.5 ? '权重杀跌' : '全面抛售';
+  // ⚠️ 标签改过一次：「全面抛售」原本是**兜底分支** —— 只在 sSmall < 0.65 且 sBig < 0.5，
+//    也就是小盘和大盘都没有明显主导时才触发。它的真实含义是「没有显著结构」，
+//    却起了一个听起来像踩踏的名字。实测 2026-10-12 只有 19 家跌停（score 0.32，很平常的一天），
+//    兜底命中 → 推送里写成「恐慌情绪 58.7/100 · 全面抛售」，两句都不对。
+const type = v.dt < 10 ? null : sSmall >= 0.65 ? '小盘主导' : sBig >= 0.5 ? '大盘主导' : '无明显结构';
   const fwd = (n) => (i + n < sh.length ? (sh[i + n].c / sh[i].c - 1) * 100 : null);
   rows.push({
     d, dt: v.dt, cap: +cap.toFixed(2), mem: v.mem, big: v.big,
@@ -202,7 +206,7 @@ writeFileSync(
       corrs,
       daily: Object.fromEntries(rows.map((r) => [r.d, { dt: r.dt, cap: r.cap, mem: r.mem, big: r.big, score: r.score, sent: r.sent, dom: r.dom, type: r.type }])),
       typeCount: Object.fromEntries(
-        ['微盘踩踏', '权重杀跌', '全面抛售'].map((t) => [t, rows.filter((r) => r.type === t).length]),
+        ['小盘主导', '大盘主导', '无明显结构'].map((t) => [t, rows.filter((r) => r.type === t).length]),
       ),
     },
     null,

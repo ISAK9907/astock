@@ -167,7 +167,10 @@ lines.push(`上证 ${num(last?.shClose, 2)} ${pct(last?.shClose, prev?.shClose)}
 lines.push(`成交 ${last ? (last.amountYi / 10000).toFixed(2) + ' 万亿' : '—'} ${last && prev ? ((last.amountYi - prev.amountYi >= 0 ? '+' : '') + (last.amountYi - prev.amountYi).toFixed(0) + ' 亿') : ''}`);
 lines.push(`涨停 ${last?.zt ?? '—'} / 跌停 ${last?.dt ?? '—'}`);
 if (today && daily[today]) {
-  lines.push(`恐慌情绪 ${srec.sent ?? '—'}/100${drec.type ? ` · ${drec.type}` : ''}`);
+  // 2026-10-13 改口径：sent 现在是**经验分位**（0~100，50 = 中位），不再是 50+15·Φ⁻¹(p)。
+      // 旧口径下这个数看起来像一把「恐慌刻度尺」，其实是把排名过了一遍正态变换 —— 分布的正态是造出来的。
+      // 现在它可以直接读成「今天在近 N 个交易日里排第几」。
+      lines.push(`恐慌分位 ${srec.sent ?? '—'}%（近 ${senti?.window?.n ?? '—'} 个交易日，50 = 中位）${drec.type ? ` · ${drec.type}` : ''}`);
   lines.push(`跌停市值占比 ${num(drec.cap, 2)}% · 权重股 ${drec.mem ?? '—'} 只`);
 }
 // ⚠️ 这里**不能**用外层那个 `failed`：本函数在步骤循环里、构建之前就被调用，

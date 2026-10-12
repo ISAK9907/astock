@@ -541,7 +541,7 @@ for (const [d, v] of Object.entries(dtDaily)) {
   if (v.small == null) v.small = raw.small;
 }
 if (dtMissing) console.warn(`警告: ${dtMissing} 个交易日在 dt-counts.json 中无对应记录`);
-// 三档门槛现在挂在**情绪分 sent** 上（前 5% / 3% / 1%），与面板刻度同一量纲，
+// 三档门槛现在挂在**恐慌分位 sent** 上（前 5% / 3% / 1%），与面板刻度同一量纲，
 // 且不随窗口长度重标。字段名用 minSent 以免和绝对严重度分混淆。
 const DT_TIERS = (dtStats?.tiers ?? [])
   .map((t) => ({ minSent: t.sentLo, maxSent: t.sentHi, color: t.color, name: t.name }))
@@ -554,7 +554,7 @@ if (dtStats?.tiers?.length) {
   console.log(
     `跌停标注: 覆盖 ${Object.keys(dtDaily).length} 个交易日，分档 ` +
       [...(dtStats.tiers ?? [])].reverse().map((t) => `${t.name}≥${t.sentLo}=${t.n}天`).join(' / ') +
-      `，合计标记 ${dtStats.marked} 天（门槛 = 情绪分，与窗口长度无关）`,
+      `，合计标记 ${dtStats.marked} 天（门槛 = 恐慌分位，与窗口长度无关）`,
   );
 }
 
@@ -567,7 +567,7 @@ const METRIC_ROWS = [
   ['score', '综合严重度分', 'A+B+F'],
 ];
 // 情绪指标（由 sentiment-backtest.mjs 生成）—— 必须早于 markedDays，
-// 因为标记日现在按情绪分筛，而不是按绝对严重度分。
+// 因为标记日现在按恐慌分位筛，而不是按绝对严重度分。
 let senti = null;
 try {
   senti = JSON.parse(readFileSync('sentiment.json', 'utf8'));
@@ -623,7 +623,8 @@ const SENTIDX = (() => {
   const csP = csi2000 ? pctOf(csi2000) : null;
   // ⚠️ 用 minSent（DT_TIERS 是映射后的数组），不是 dtStats 原文件里的 sentLo ——
   //    名字搞错会静默得到 NaN 门档，结论行就会写成「前 0 天（≥NaN）」。
-  const extLo = DT_TIERS?.length ? Math.max(...DT_TIERS.map((t) => t.minSent)) : 84.9;
+  // ⚠️ 兜底默认值跟着口径走：旧口径是 84.9（=50+15·Φ⁻¹(0.99)），新口径就是 99。
+const extLo = DT_TIERS?.length ? Math.max(...DT_TIERS.map((t) => t.minSent)) : 99;
   const extIdx = sent.map((v, i) => (v != null && v >= extLo && shP && shP[i] != null ? i : -1)).filter((i) => i >= 0);
   return {
     dates: days,
@@ -644,13 +645,13 @@ const SENTIDX = (() => {
 
 const markedDays = Object.entries(dtDaily)
   .map(([d, v]) => ({ d, ...v, sent: senti?.daily?.[d]?.sent ?? null }))
-  .filter((v) => v.sent != null && v.sent >= (dtStats?.tiers?.[0]?.sentLo ?? 74.7))
+  .filter((v) => v.sent != null && v.sent >= (dtStats?.tiers?.[0]?.sentLo ?? 95))
   .sort((a, b) => b.sent - a.sent);
 const countMissed = markedDays.filter((v) => v.dt < 60);   // 纯家数阈值会漏掉
 
 // 情绪分阈值 → 次日上涨率。样本拉长后中档阈值（≥60）的边际会塌掉，这类行整行标红。
 const thHtml = senti?.thresholds?.length
-  ? `<div class="sect" style="margin-top:12px">情绪分阈值 → 次日上证上涨率 <span class="hint">样本 ${senti.window.n} 天</span></div>
+  ? `<div class="sect" style="margin-top:12px">恐慌分位阈值 → 次日上证上涨率 <span class="hint">样本 ${senti.window.n} 天</span></div>
       <table class="stbl">
         <tr><th>阈值</th><th>天数</th><th>次日上涨</th><th>边际</th><th>p 值</th></tr>
         ${senti.thresholds
@@ -673,7 +674,7 @@ const ls = lastState?.[1] ?? null;
 // 0~100 刻度上的情绪分（和上方刻度同一个量）。必须与绝对严重度分 score 区分开：
 // 标记日是**按 score ≥ 1.25 挑的**，表里如果直接摆 score，读起来会和刻度数字混为一谈。
 const sentStr = (d) => (senti?.daily?.[d]?.sent != null ? senti.daily[d].sent.toFixed(1) : '—');
-const typeColor = { 微盘踩踏: '#3fa66b', 权重杀跌: '#ef4d5a', 全面抛售: '#f59e0b' };
+const typeColor = { 小盘主导: '#3fa66b', 大盘主导: '#ef4d5a', 无明显结构: '#f59e0b' };
 const statePanel = senti
   ? `<div class="panel" data-panel="state"><h2>恐慌情绪状态描述器
       <span class="hint">只做状态刻画，不输出预测概率</span></h2>
@@ -726,11 +727,11 @@ const statePanel = senti
       <div class="sect">恐慌类型（按跌停股市值结构，仅家数≥10 时判定）</div>
       <table class="stbl">
         <tr><th>类型</th><th>特征</th><th>全样本天数</th><th>标记日</th></tr>
-        ${['微盘踩踏', '权重杀跌', '全面抛售']
+        ${['小盘主导', '大盘主导', '无明显结构']
           .map((t) => {
             const n = Object.values(dtDaily).filter((v) => v.type === t).length;
             const mk = markedDays.filter((v) => v.type === t).length;
-            const desc = t === '微盘踩踏' ? '小盘占比 ≥65%' : t === '权重杀跌' ? '大盘占比 ≥50%' : '介于两者之间';
+            const desc = t === '小盘主导' ? '小盘占比 ≥65%' : t === '大盘主导' ? '大盘占比 ≥50%' : '介于两者之间';
             return `<tr><td><i class="mk" style="background:${typeColor[t]}"></i>${t}</td><td class="tiny">${desc}</td><td>${n}</td><td>${mk}</td></tr>`;
           })
           .join('')}
@@ -812,7 +813,7 @@ const dtPanel = dtStats
     </div>
   </div>
   <div class="foot">
-    <b>为什么不能只看家数</b>：同样叫"跌停潮"，结构可以完全相反 —— <b>03-23</b> 家数 133 但市值占比仅 0.92%（大盘只有 2 只、小盘 90 只，纯微盘踩踏）；<b>07-02</b> 家数仅 39 但市值占比 2.75%（大盘 22 只，权重股杀跌）。<b>按家数排序会把这两个性质相反的事件排反</b>。<br>
+    <b>为什么不能只看家数</b>：同样叫"跌停潮"，结构可以完全相反 —— <b>03-23</b> 家数 133 但市值占比仅 0.92%（大盘只有 2 只、小盘 90 只，纯小盘主导）；<b>07-02</b> 家数仅 39 但市值占比 2.75%（大盘 22 只，权重股杀跌）。<b>按家数排序会把这两个性质相反的事件排反</b>。<br>
     <b>综合严重度分</b> = max(家数/60, 市值占比/1.0, 权重股/12)，含义是"最严重的那个维度达到几倍门槛"，两类极值都能捕获。<b>但它无上界</b>，不能直接拿来分档；本面板的粉/紫/橙改挂在<b>情绪分</b>上（窗口内最严重的前 5% / 3% / 1%），与窗口长度无关。本次 ${markedDays.length} 个标记日中，<b>${countMissed.length} 天是纯家数阈值（跌停 < 60 家）会完全漏掉的</b>${countMissed.length ? `（${countMissed.map((v) => `${v.d.slice(5)}/${v.dt}家`).join('、')}）` : ''}。<br>
     <b>⚠️ 窗口长度对结论影响极大 —— 而且这次是往「显著」的方向翻</b>：153 天窗口下「跌停家数 → 未来 1 日收益」是 <b>+0.216（p=0.007，显著）</b>；缩到 300 天降到 <b>+0.110（p=0.056，不显著）</b>，当时据此判过「结论不稳健」；现在扩到 <b>${dtStats?.window?.n ?? 743} 天（近三年）又回到 +0.136（p=0.0002，显著）</b>。三段点估计方向一致、都落在 +0.11~+0.22，说明信号本身存在，只是<b>中等样本量下信噪比不足</b>。教训：任何「某窗口下不显著」的判断都不该当成结论。<br>
     <b>档位表现（本窗口）</b>：橙档（前 1%，${dtStats?.tiers?.[2]?.n ?? 0} 天）反转 lift 最高 ${(dtStats?.tiers?.[2]?.lift ?? 0).toFixed(2)}x、5 日胜率 ${(dtStats?.tiers?.[2]?.f5Win ?? 0).toFixed(0)}%、5 日均值 ${(dtStats?.tiers?.[2]?.f5 ?? 0).toFixed(2)}%；紫档（前 3%）lift ${(dtStats?.tiers?.[1]?.lift ?? 0).toFixed(2)}x、胜率 ${(dtStats?.tiers?.[1]?.f5Win ?? 0).toFixed(0)}%；粉档（3~5%）lift ${(dtStats?.tiers?.[0]?.lift ?? 0).toFixed(2)}x、胜率 ${(dtStats?.tiers?.[0]?.f5Win ?? 0).toFixed(0)}%。单档样本只有个位数到十几，<b>不足以据此下单</b>。<br>

@@ -32,10 +32,10 @@ if (d) {
   console.log(`  全市场样本    ${d.n} 只   合计流通市值 ${(d.allCap / 1e12).toFixed(2)} 万亿`);
 } else console.log('  （无记录）');
 
-console.log('\n=== 恐慌情绪 ===');
+console.log('\n=== 恐慌分位 ===');
 const s = senti.daily?.[today];
 const st = stats.daily?.[today];
-console.log(`  情绪分        ${s?.sent ?? '—'} / 100`);
+console.log(`  恐慌分位      ${s?.sent ?? '—'}%（经验分位，50 = 中位）`);
 console.log(`  综合严重度分  ${s?.score ?? '—'}`);
 console.log(`  恐慌类型      ${st?.type ?? '（家数不足10，不判定）'}`);
 console.log(`  对照：300日基准 P(次日涨) = ${senti.base1 ?? '—'}%`);
