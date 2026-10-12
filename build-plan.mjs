@@ -94,6 +94,10 @@ textarea#holdText{width:100%;min-height:104px;background:var(--bg);color:var(--f
 .hintbox{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--sect);
   border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.75}
 details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
+.chkbox{border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.7;margin-bottom:9px}
+.chkbox.good{background:rgba(47,158,107,.12);border-left:3px solid #2f9e6b}
+.chkbox.bad{background:rgba(224,128,58,.14);border-left:3px solid #e0803a}
+.warnbox{background:rgba(224,128,58,.10);border:1px solid var(--line);border-left:3px solid #e0803a}
 .dim{color:var(--dim)}
 code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 </style></head><body>
