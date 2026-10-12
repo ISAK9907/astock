@@ -194,30 +194,46 @@ if (upcoming.length) {
   }
 }
 
-// ---------- 明日开盘应对（盘前信号）----------
+// ---------- 明日开盘预判 + 明日操作 ----------
 const sig = read('signal-state.json', null);
 if (sig?.states?.length) {
   const s0 = sig.states.find((s) => s.key === 'sh') ?? sig.states[0];
-  const tier = s0.retT <= -0.5 ? '弱' : s0.retT >= 0.5 ? '强' : '中性';
-  const vol = s0.amtRatio == null ? '—' : s0.amtRatio < 0.9 ? '缩量' : s0.amtRatio >= 1.15 ? '放量' : '平量';
   lines.push('—— 明日开盘预判 ——');
   // 只用今日收盘：回归 16 年数据得 明日跳空 ≈ -0.135% + 0.09 × 今日涨跌幅（r=0.142，分桶单调）
   // 这只是「无条件基准 + 收盘动量」的一阶估；真正的跳空要看隔夜美股与亚洲早盘，明早 09:26 更新
   const fc = -0.135 + 0.09 * s0.retT;
   lines.push(`仅用今日收盘：明日开盘约 ${fc >= 0 ? '+' : ''}${fc.toFixed(2)}%（今日 ${s0.retT >= 0 ? '+' : ''}${s0.retT.toFixed(2)}%）`);
   lines.push(`明早 09:26 会用美股 + 亚洲早盘 + 集合竞价更新`);
-  lines.push('');
-  lines.push('—— 明日开盘应对 ——');
-  lines.push(`T日(${sig.T}) 上证 ${s0.retT >= 0 ? '+' : ''}${s0.retT.toFixed(2)}%（${tier}）· 量能 ${s0.amtRatio?.toFixed(2)}×（${vol}）`);
-  const gapHi = decide(s0, 1.2);
-  lines.push(`若明日高开>1% → ${gapHi.action.label}${gapHi.expect == null ? '' : `（期望 ${gapHi.expect >= 0 ? '+' : ''}${gapHi.expect.toFixed(2)}%）`}`);
-  const gapLo = decide(s0, -1.2);
-  lines.push(`若明日低开<-1% → ${gapLo.action.label}${gapLo.expect == null ? '' : `（期望 ${gapLo.expect >= 0 ? '+' : ''}${gapLo.expect.toFixed(2)}%）`}`);
-  // 供明早盘前脚本对比「下午预判 vs 清晨预判」
+  // ⚠️ open-forecast.json 必须继续写：premarket.mjs 读它来对比「下午预判 vs 清晨预判」。
+  //    删「明日开盘应对」那一节时顺手删过这个写入，是错的 —— 它跟那一节无关。
   try {
     writeFileSync('open-forecast.json', JSON.stringify({ generatedAt: new Date().toISOString(), T: sig.T, retT: s0.retT, predicted: +fc.toFixed(3), base: sig.states.map((s) => ({ key: s.key, close: s.close })) }, null, 1), 'utf8');
   } catch { /* 忽略 */ }
 }
+  // ---------- 明日操作 ----------
+  // 这一节**替代**了原来的「明日开盘应对」（若明日高开>1% → 怎样）。
+  // 那套条件规则只覆盖 2.6% 的交易日，对应面板已删；改成报告「价格线有没有被触发」——
+  // 这是可以直接执行的，而且和持仓计划台的第一屏是同一份数据、同一套口径。
+  // ⚠️ plan-data.json 由 plan-analysis.mjs 生成，排在「生成看板」之前，所以这里一定读得到。
+  const plan = read('plan-data.json', null);
+  if (plan?.action) {
+    const A = plan.action;
+    lines.push('—— 明日操作 ——');
+    if (A.todo?.length) {
+      for (const t of A.todo) {
+        const a = (A.active ?? []).find((x) => x.name === t.name);
+        if (t.hitAdd > 0) {
+          lines.push(`⚠️ ${t.name} 第 ${t.hitAdd} 档加仓已触发（PE 分位 ${a?.pePct ?? '—'}%）`);
+          if (a?.nextAdd) lines.push(`    下档 @${a.nextAdd.price}（${a.nextAdd.pct >= 0 ? '+' : ''}${a.nextAdd.pct}%）`);
+        }
+        if (t.hitCut > 0) lines.push(`⚠️ ${t.name} 第 ${t.cutTier} 档减仓已触发`);
+      }
+    } else {
+      lines.push('明天不需要操作');
+      if (A.closest) lines.push(`最近加仓线：${A.closest.name} @${A.closest.price}（还差 ${A.closest.pct}%）`);
+    }
+    if (plan.discipline?.permission) lines.push(`规则判定：${plan.discipline.permission.title}`);
+  }
 
 const title = `${today ?? '无数据'} A股盘后`;
 const body = lines.join('\n');

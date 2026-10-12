@@ -100,6 +100,40 @@
   }
 
   /**
+   * 集中度纪律检查。抽成独立函数是为了**能单独测试** ——
+   * 这是页面上少数不依赖估值假设、纯算术的判断，必须算准。
+   *
+   * 为什么个股这块只做集中度、不做估值价格线：
+   *   这几只是周期股（电子特气跟半导体资本开支、锂跟碳酸锂价格），它们的 PE 是反的 ——
+   *   盈利崩塌时 PE 反而高、景气顶点 PE 反而低。拿「PE 分位越低越便宜」去套会把周期读反。
+   *   而集中度是纯算术，不依赖任何估值口径，也不依赖预测。
+   */
+  function checkConcentration(rows, limits) {
+    const L = { maxSingle: 30, maxSector: 40, ...(limits ?? {}) };
+    const val = (r) => r.value ?? (r.price ?? r.cost ?? 0) * (r.qty ?? 0);
+    const value = rows.reduce((s, r) => s + val(r), 0);
+    const violations = [];
+    for (const r of rows) {
+      const share = value ? (val(r) / value) * 100 : 0;
+      if (share > L.maxSingle) violations.push({ kind: 'single', name: r.name, share: +share.toFixed(1), limit: L.maxSingle });
+    }
+    const bySector = new Map();
+    for (const r of rows) {
+      const sec = String(r.sector ?? '').trim();
+      if (!sec) continue;
+      if (!bySector.has(sec)) bySector.set(sec, { v: 0, names: [] });
+      const o = bySector.get(sec);
+      o.v += val(r);
+      o.names.push(r.name);
+    }
+    const sectors = [...bySector.entries()]
+      .map(([sec, o]) => ({ sector: sec, names: o.names, value: +o.v.toFixed(2), share: value ? +((o.v / value) * 100).toFixed(1) : 0 }))
+      .sort((a, b) => b.share - a.share);
+    for (const s of sectors) if (s.share > L.maxSector) violations.push({ kind: 'sector', name: s.sector, names: s.names, share: s.share, limit: L.maxSector });
+    return { value: +value.toFixed(2), violations, sectors, untagged: rows.filter((r) => !String(r.sector ?? '').trim()).length, limits: L };
+  }
+
+  /**
    * 自校验：这个数据里有**冗余** —— 各股(市值|盈亏)之和必须等于总市值/浮动盈亏。
    * 这是唯一能自动发现「解析歪了」的手段：字段错了不会报错，但和对不上的概率很高。
    * 误差超过 0.5% 或 1 元就报警，由用户决定是否保存。
@@ -252,12 +286,13 @@
     }
     box.innerHTML =
       checkHtml +
-      `<div class="hrow hhead"><span>代码</span><span>名称</span><span>数量</span><span>成本</span><span>现价</span><span></span></div>` +
+      `<div class="hrow hhead" style="grid-template-columns:1fr 62px 52px 56px 56px 24px"><span>名称</span><span>赛道</span><span>数量</span><span>成本</span><span>现价</span><span></span></div>` +
       draft
         .map(
           (r, i) =>
-            `<div class="hrow"><input data-i="${i}" data-f="code" value="${esc(r.code ?? '')}" placeholder="代码">` +
+            `<div class="hrow" style="grid-template-columns:1fr 62px 52px 56px 56px 24px">` +
             `<input data-i="${i}" data-f="name" value="${esc(r.name ?? '')}" placeholder="名称">` +
+            `<input data-i="${i}" data-f="sector" value="${esc(r.sector ?? '')}" placeholder="赛道">` +
             `<input data-i="${i}" data-f="qty" value="${esc(r.qty ?? '')}" inputmode="numeric" placeholder="数量">` +
             `<input data-i="${i}" data-f="cost" value="${esc(r.cost ?? '')}" inputmode="decimal" placeholder="成本">` +
             `<input data-i="${i}" data-f="price" value="${esc(r.price ?? '')}" inputmode="decimal" placeholder="现价">` +
@@ -273,7 +308,7 @@
         const r = draft[+el.dataset.i];
         if (!r) return;
         const f = el.dataset.f;
-        r[f] = f === 'name' || f === 'code' ? el.value.trim() : num(el.value);
+        r[f] = f === 'name' || f === 'code' || f === 'sector' ? el.value.trim() : num(el.value);
       }),
     );
     box.querySelectorAll('[data-del]').forEach((el) =>
@@ -317,20 +352,44 @@
         (acct.pnl != null ? `<span class="neg">相对总资产 <b>${((acct.pnl / acct.assets) * 100).toFixed(2)}%</b></span>` : '') +
         `</div>`;
     }
-    // 行业聚类提示：按「几只股票」数会低估集中度，按业务归类才看得出来。
-    // ⚠️ 这里只做事实归类，不给买卖建议。
-    const SECT = { 电子特气: ['华特气体', '中船特气'], 锂资源: ['融捷股份', '中矿资源'] };
-    let conc = '';
-    for (const [sec, names] of Object.entries(SECT)) {
-      const rs = rows.filter((r) => names.includes(r.name));
-      if (rs.length < 2) continue;
-      const v = rs.reduce((s, r) => s + (r.value ?? (r.price ?? 0) * (r.qty ?? 0)), 0);
-      conc += `${sec}（${rs.map((r) => r.name).join('+')}）占持仓 <b>${((v / value) * 100).toFixed(1)}%</b>　`;
+    // ---------------- 集中度纪律 ----------------
+    // 为什么这个比个股价格线更重要：对这几只周期股，PE（甚至 PB）分位都不可靠 ——
+    // 周期股的盈利和净资产都在剧烈波动，「和自己的历史比」会把周期底部读成贵、顶部读成便宜。
+    // 但**集中度是纯算术**，不依赖任何估值假设，也不依赖预测。所以个股这块只做集中度与纪律。
+    //
+    // 阈值是**你的纪律，可改**。默认值是我给的起点，不是我的判断。
+    const C = checkConcentration(rows);
+    const CONC = C.limits;
+    const violations = C.violations.map((v) =>
+      v.kind === 'single'
+        ? `单一标的 <b>${esc(v.name)}</b> 占持仓 ${v.share}% > 上限 ${v.limit}%`
+        : `赛道 <b>${esc(v.name)}</b>（${v.names.map(esc).join('+')}）占持仓 ${v.share}% > 上限 ${v.limit}%`,
+    );
+    const sectorRows = C.sectors.map((s) => [s.sector, { v: s.value, names: s.names }]);
+    const untagged = C.untagged;
+
+    let concHtml = '';
+    if (violations.length) {
+      concHtml =
+        `<div class="chkbox bad"><b>⚠️ 集中度纪律：${violations.length} 项超限</b><br>` +
+        violations.join('<br>') +
+        `<br><span class="dim">这是纯算术，不依赖任何估值判断或预测。上限是可改的规则（单一标的 ${CONC.maxSingle}% / 单一赛道 ${CONC.maxSector}%）。</span></div>`;
+    } else if (sectorRows.length) {
+      concHtml = `<div class="chkbox good">✓ 集中度纪律：没有超限项</div>`;
     }
-    if (conc) conc = `<div class="chkbox warnbox">⚠️ <b>按业务归类</b>：${conc}<br><span class="dim">同一赛道的两只股票是<b>同一笔交易</b>，按「几只股票」数会低估集中度。</span></div>`;
+    if (untagged) {
+      concHtml +=
+        `<div class="chkbox warnbox">有 <b>${untagged}</b> 只标的没填赛道 —— <b>赛道集中度算不出来</b>。<br>` +
+        `<span class="dim">同一赛道的两只股票其实是<b>同一笔交易</b>，按「几只股票」数会系统性低估集中度。` +
+        `点上面「解析」重新贴一次，或手动给每只在「赛道」列填一个名字（如「电子特气」「锂资源」）。</span></div>`;
+    }
+    if (sectorRows.length) {
+      concHtml += `<div class="hstat" style="font-size:11.5px">按赛道：` +
+        sectorRows.map(([sec, o]) => `${esc(sec)} <b>${((o.v / value) * 100).toFixed(1)}%</b>`).join('　') + `</div>`;
+    }
 
     box.innerHTML =
-      acctHtml + conc +
+      acctHtml + concHtml +
       `<div class="hstat"><span>市值 <b>${value.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b></span>` +
       `<span>成本 <b>${cost.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b></span>` +
       `<span class="${pnl >= 0 ? 'pos' : 'neg'}">浮动 <b>${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b>` +
@@ -384,7 +443,7 @@
   }
 
   // 供测试调用：解析器必须能被单独验证，不能只靠"页面上看着对"
-  window.HOLDINGS = { parse, splitCells, KEY, parseAccount, crossCheck, parseBroker };
+  window.HOLDINGS = { parse, splitCells, KEY, parseAccount, crossCheck, parseBroker, checkConcentration };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
   else wire();
 })();
