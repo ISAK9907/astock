@@ -11,6 +11,18 @@ const logJs = readFileSync('plan-log.js', 'utf8');
 const gateJs = readFileSync('plan-gate.js', 'utf8');
 // 个股闸门数据（analyze-stocks.mjs 生成）。缺失时整块不渲染，不让页面因此崩掉。
 const GATE = existsSync('stock-gate.json') ? JSON.parse(readFileSync('stock-gate.json', 'utf8')) : null;
+// 个股价格序列（画曲线+均线用）。**必须裁剪**：全量 5 只 ×1600 根会让页面涨近 300 KB，
+// 而卡片里只看近期趋势，250 根（约一年）足够。按 [日期, 收盘] 的紧凑格式内联。
+const CHART_BARS = 250;
+const STOCKS = (() => {
+  if (!existsSync('stocks.json')) return null;
+  try {
+    const raw = JSON.parse(readFileSync('stocks.json', 'utf8'));
+    const o = {};
+    for (const s of Object.values(raw.series)) o[s.name] = s.bars.slice(-CHART_BARS).map((b) => [b.d, b.c]);
+    return o;
+  } catch { return null; }
+})();
 const buildStamp = new Date().toISOString();
 
 const html = `<!doctype html><html lang="zh-CN"><head>
@@ -130,6 +142,9 @@ details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
 .hpprice{font-size:11.5px;color:var(--dim);margin-bottom:5px}
 .hppr{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;font-variant-numeric:tabular-nums}
 .hppr span{color:var(--dim)}
+.hpsvg{width:100%;height:150px;display:block;margin-bottom:6px;background:rgba(255,255,255,.02);border-radius:6px}
+.hplegend{display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--dim);margin-bottom:9px;font-variant-numeric:tabular-nums}
+.hplegend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
 .dim{color:var(--dim)}
 code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 </style></head><body>
@@ -209,6 +224,7 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 
 <script>window.PLAN = ${JSON.stringify(PLAN)};</script>
 <script>window.GATE = ${JSON.stringify(GATE)};</script>
+<script>window.STOCKS = ${JSON.stringify(STOCKS)};</script>
 <script>${planJs}</script>
 <script>${holdJs}</script>
 <script>${logJs}</script>

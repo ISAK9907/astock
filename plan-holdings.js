@@ -523,7 +523,8 @@
           const tranche = Math.max(0, Math.round((A * 0.70 - mv) / 4));
           const r = window.GATE_ADD(name, tranche, holdings, acct, lg);
           const rows = window.GATE_PRICES(name, holdings, acct, lg);
-          d.innerHTML =
+          const chart = window.GATE_CHART ? window.GATE_CHART(name) : '';
+          d.innerHTML = chart +
             '<div class="hpadv ' + (r.ok ? 'ok' : 'no') + '">' + (r.ok ? '✓ 允许加仓' : '✗ 不允许加仓') +
             (r.blocked.length ? '：' + r.blocked.map(esc).join('；') : '') + '</div>' +
             '<div class="hpprice"><b>计划操作价格</b>（由你定的规则推导，不是预测）</div>' +

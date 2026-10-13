@@ -186,8 +186,52 @@
     return out;
   }
 
+  /**
+   * 价格曲线 + 均线（SVG，无依赖）。
+   * 为什么这张图值得放进卡片：企稳判定用的是 MA20 和「不创新低」，光看数字很难判断
+   * "离站上还有多远""是在走平还是继续下坠"。图上把 MA20 画成高亮线，一眼就能看出来。
+   * ⚠️ 仅作图，不做任何预测 —— 均线的预测力我在这 5 只上验过，是反的（华特均值回归、融捷动量）。
+   */
+  function renderChart(name) {
+    const S = window.STOCKS?.[name];
+    if (!S || S.length < 30) return '';
+    const W = 500, Hh = 150, P = { t: 8, r: 6, b: 16, l: 6 };
+    const closes = S.map((x) => x[1]);
+    const ma = (n, i) => { if (i < n - 1) return null; let s = 0; for (let k = i - n + 1; k <= i; k++) s += closes[k]; return s / n; };
+    const m5 = closes.map((_, i) => ma(5, i)), m20 = closes.map((_, i) => ma(20, i)), m60 = closes.map((_, i) => ma(60, i));
+    const all = [...closes, ...m20.filter((v) => v != null), ...m60.filter((v) => v != null)].filter((v) => v != null);
+    const lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * 0.06 || 1;
+    const X = (i) => P.l + (i / (S.length - 1)) * (W - P.l - P.r);
+    const Y = (v) => P.t + (1 - (v - (lo - pad)) / ((hi + pad) - (lo - pad))) * (Hh - P.t - P.b);
+    const path = (arr) => {
+      let d = '', open = false;
+      arr.forEach((v, i) => { if (v == null) { open = false; return; } d += (open ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); open = true; });
+      return d;
+    };
+    const lastC = closes.at(-1), lastMA20 = m20.at(-1), lastMA60 = m60.at(-1);
+    const up = lastC >= (lastMA20 ?? lastC);
+    // x 轴只标首末日期，避免手机上糊成一团
+    const d0 = S[0][0].slice(5), d1 = S.at(-1)[0].slice(5);
+    return '<svg class="hpsvg" viewBox="0 0 ' + W + ' ' + Hh + '" preserveAspectRatio="none">' +
+      '<path d="' + path(closes) + '" fill="none" stroke="' + (up ? '#e08a6a' : '#4fbf8f') + '" stroke-width="1.4"/>' +
+      '<path d="' + path(m5) + '" fill="none" stroke="rgba(150,160,180,.5)" stroke-width="1" stroke-dasharray="3 2"/>' +
+      // MA20 是企稳判定的那条线，画粗、高亮
+      '<path d="' + path(m20) + '" fill="none" stroke="#5b8def" stroke-width="1.8"/>' +
+      '<path d="' + path(m60) + '" fill="none" stroke="rgba(224,128,58,.75)" stroke-width="1.2"/>' +
+      '<text x="' + P.l + '" y="' + (Hh - 4) + '" fill="#7b8698" font-size="9">' + d0 + '</text>' +
+      '<text x="' + (W - P.r) + '" y="' + (Hh - 4) + '" fill="#7b8698" font-size="9" text-anchor="end">' + d1 + '</text>' +
+      '</svg>' +
+      '<div class="hplegend">' +
+      '<span><i style="background:' + (up ? '#e08a6a' : '#4fbf8f') + '"></i>收盘 ' + lastC.toFixed(2) + '</span>' +
+      '<span><i style="background:#5b8def"></i>MA20 ' + (lastMA20 == null ? '—' : lastMA20.toFixed(2)) + (up ? '（已在上方）' : '（还在下方）') + '</span>' +
+      '<span><i style="background:rgba(224,128,58,.75)"></i>MA60 ' + (lastMA60 == null ? '—' : lastMA60.toFixed(2)) + '</span>' +
+      '<span><i style="background:rgba(150,160,180,.5)"></i>MA5</span>' +
+      '</div>';
+  }
+
   window.GATE_ADD = checkAdd;
   window.GATE_PRICES = planPrices;
+  window.GATE_CHART = renderChart;
   /**
    * ② 必须逐条回答 —— 改成**只讲你的持仓**。
    * ⚠️ 原来这节由 plan.js 用服务端数据渲染，内容是「价值陷阱 / 价格在高位但估值不高 / 12–1 月小盘弱」
