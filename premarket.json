@@ -1,79 +1,52 @@
 {
- "generatedAt": "2026-10-12T01:26:01.018Z",
- "date": "2026-10-12",
- "T": "2026-10-09",
+ "generatedAt": "2026-10-13T01:26:02.227Z",
+ "date": "2026-10-13",
+ "T": "2026-10-12",
  "global": {
   "quotes": {
    "spx": {
     "name": "标普500",
-    "price": 7811.54,
-    "chg": 0.59,
-    "prevClose": 7765.36,
-    "open": 7786.36,
-    "asOf": "2026/10/10 03:59:45",
-    "date": "2026-10-10",
-    "src": "东财 push2"
+    "price": 7807.24,
+    "prevClose": 7811.54,
+    "open": 7813.04,
+    "chg": -0.06,
+    "date": "",
+    "asOf": "",
+    "src": "腾讯"
    },
-   "kospi": {
-    "name": "韩国KOSPI",
-    "price": 6419.31,
-    "chg": -3.12,
-    "prevClose": 6625.93,
-    "open": 6578.17,
-    "asOf": "2026/10/12 09:25:50",
-    "date": "2026-10-12",
-    "src": "东财 push2"
-   },
+   "kospi": null,
    "nikkei": {
     "name": "日经225",
-    "price": 69030.92,
-    "chg": -0.02,
-    "prevClose": 69042.11,
-    "open": 68648.5,
-    "asOf": "2026/10/9 14:30:00",
-    "date": "2026-10-09",
-    "src": "东财 push2"
+    "price": 44946.64,
+    "prevClose": 45354.99,
+    "open": null,
+    "chg": -0.9,
+    "date": "2026-10-13",
+    "asOf": "",
+    "src": "新浪(无今开)"
    },
-   "twii": {
-    "name": "台湾加权",
-    "price": 48949.07,
-    "chg": -0.74,
-    "prevClose": 49313.44,
-    "open": 49272.08,
-    "asOf": "2026/10/12 09:25:10",
-    "date": "2026-10-12",
-    "src": "东财 push2"
-   },
+   "twii": null,
    "gold": {
     "name": "COMEX黄金",
-    "price": 422.66,
-    "chg": 0.24,
-    "prevClose": 421.63,
-    "open": 422.08,
-    "asOf": "2026/10/12 09:15:58",
-    "date": "2026-10-12",
-    "src": "东财 push2"
+    "price": 4180.822,
+    "prevClose": 4190.6,
+    "open": null,
+    "chg": -0.23333174247125443,
+    "date": "2026-10-13",
+    "asOf": "09:25:57",
+    "src": "新浪"
    },
-   "dxy": {
-    "name": "美元指数",
-    "price": 102.13,
-    "chg": -0.11,
-    "prevClose": 102.24,
-    "open": 102.32,
-    "asOf": "2026/10/12 09:25:40",
-    "date": "2026-10-12",
-    "src": "东财 push2"
-   }
+   "dxy": null
   },
   "forecast": {
-   "predicted": -0.289,
-   "basis": "亚洲早盘（2/3 家已开盘）",
-   "asia": -0.402,
-   "asiaN": 2,
-   "us": 0.59,
-   "gold": 0.24,
-   "usRead": "略偏多",
-   "asiaRead": "略偏空",
+   "predicted": -0.021,
+   "basis": "仅美股（亚洲开盘价取不到）",
+   "asia": null,
+   "asiaN": 0,
+   "us": -0.06,
+   "gold": -0.23333174247125443,
+   "usRead": "中性",
+   "asiaRead": null,
    "ref": null
   }
  },
@@ -81,9 +54,9 @@
   {
    "key": "sh",
    "name": "上证指数",
-   "retT": 0.0495028206376702,
-   "amtRatio": 1.0459850671773134,
-   "gap": -0.17863326711139438,
+   "retT": -0.4339251941178679,
+   "amtRatio": 0.8381802767817008,
+   "gap": -0.9597385723913776,
    "stale": false,
    "decision": {
     "action": {
@@ -103,21 +76,21 @@
   {
    "key": "szcz",
    "name": "深证成指",
-   "retT": 0.1660816976796431,
-   "amtRatio": 1.0663962610919373,
-   "gap": -0.4342399669415742,
+   "retT": -2.0328420078757348,
+   "amtRatio": 0.8638414218375627,
+   "gap": -1.7895869548559706,
    "stale": false,
    "decision": {
     "action": {
-     "key": "watch",
-     "label": "观望",
-     "color": "#7b8698",
-     "sign": 0
+     "key": "buy",
+     "label": "偏持有",
+     "color": "#5b8def",
+     "sign": 1
     },
-    "expect": null,
-    "n": 0,
-    "era": "—",
-    "why": "跳空未达 ±1% 阈值，历史上无边缘"
+    "expect": 0.28,
+    "n": 327,
+    "era": "4/4",
+    "why": "前一日跌 -2.03%，低开 -1.79% → 日内倾向反弹，可继续持有"
    },
    "source": "新浪 hq",
    "proxy": false
@@ -125,21 +98,21 @@
   {
    "key": "cyb",
    "name": "创业板指",
-   "retT": 0.21991288446472357,
-   "amtRatio": 1.0995209975171794,
-   "gap": -0.6515220966472612,
+   "retT": -2.6126272658120064,
+   "amtRatio": 0.8710367754461605,
+   "gap": -2.182248338632786,
    "stale": false,
    "decision": {
     "action": {
-     "key": "watch",
-     "label": "观望",
-     "color": "#7b8698",
-     "sign": 0
+     "key": "buy",
+     "label": "偏持有",
+     "color": "#5b8def",
+     "sign": 1
     },
-    "expect": null,
-    "n": 0,
-    "era": "—",
-    "why": "跳空未达 ±1% 阈值，历史上无边缘"
+    "expect": 0.28,
+    "n": 327,
+    "era": "4/4",
+    "why": "前一日跌 -2.61%，低开 -2.18% → 日内倾向反弹，可继续持有"
    },
    "source": "新浪 hq",
    "proxy": false
@@ -147,45 +120,23 @@
   {
    "key": "hs300",
    "name": "沪深300",
-   "retT": 0.1619153854648836,
-   "amtRatio": 1.1108597937885825,
-   "gap": -0.2626669090120215,
+   "retT": -0.6780929085727028,
+   "amtRatio": 0.902329315652819,
+   "gap": -1.190084897321575,
    "stale": false,
    "decision": {
     "action": {
-     "key": "watch",
-     "label": "观望",
-     "color": "#7b8698",
-     "sign": 0
+     "key": "buy",
+     "label": "偏持有",
+     "color": "#5b8def",
+     "sign": 1
     },
-    "expect": null,
-    "n": 0,
-    "era": "—",
-    "why": "跳空未达 ±1% 阈值，历史上无边缘"
+    "expect": 0.28,
+    "n": 327,
+    "era": "4/4",
+    "why": "前一日跌 -0.68%，低开 -1.19% → 日内倾向反弹，可继续持有"
    },
    "source": "新浪 hq",
-   "proxy": false
-  },
-  {
-   "key": "csi2000",
-   "name": "中证2000",
-   "retT": 0.04242819843343071,
-   "amtRatio": 1.0329519013258674,
-   "gap": -0.19606563794735132,
-   "stale": false,
-   "decision": {
-    "action": {
-     "key": "watch",
-     "label": "观望",
-     "color": "#7b8698",
-     "sign": 0
-    },
-    "expect": null,
-    "n": 0,
-    "era": "—",
-    "why": "跳空未达 ±1% 阈值，历史上无边缘"
-   },
-   "source": "东财 push2",
    "proxy": false
   }
  ]

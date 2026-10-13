@@ -69,7 +69,6 @@ const steps = [
   // 必须排在生成看板之前（看板顶部那条状态带要用它）。
   // 注意它读的本步日志里还没有「本次运行」的记录 —— 显示的是上一次的状态，这是有意的。
   ['自动化健康', 'analyze-automation.mjs'],
-  ['盘中跌停曲线', 'fetch-dt-intraday.mjs'],
   ['全球市场日线', 'fetch-global.mjs'],
   // ---- 工具二：持仓计划台 ----
   // 用中证官方一个源同时拿价格+市盈率（绕开东财 push2 的整段封禁）。
@@ -78,7 +77,23 @@ const steps = [
   ['计划台分析', 'plan-analysis.mjs'],
   ['计划台生成', 'build-plan.mjs'],
   ['生成看板', 'build-dashboard.mjs'],
+  // ---- 兜底性质的长任务：必须排在**最后** ----
+  // ⚠️ 2026-10-13 挪到这里，原因是它把一整天的产出都拖掉了：
+  //    这一步是增量回填「标记日·当日跌停家数随时间」曲线。它本身设计成"所有标记日都有曲线就立刻退出"，
+  //    但只要有一天待回填，就要重新扫**全市场 5220 只**（实测 40 分钟，日志自报"剩余约 19.8 分钟"）。
+  //    它原来排在第 12 步、**在生成看板和发布之前** —— 于是今天 15:40 那次跑到 23.7 分钟被杀（0xC000013A），
+  //    后面所有步骤（估值/计划台/生成看板/发布）全部没跑，用户看到的还是早上 09:26 盘前那版。
+  //    这和 2026-10-09 丢盘后是同一类事故：**长任务排在关键路径前面**。
+  //    挪到最后之后，即使它被杀，当天的看板也已经生成并发布了；曲线明天再补。
+  //    代价：新标记日的曲线晚一天上图 —— 这个面板本来就是历史回看用的，可以接受。
+  //    （它现在已经不在这个数组里了：挪到「发布之后」执行，见下方同名注释块。）
 ];
+
+// ⚠️ 这个函数**之前根本不存在**，而备份重试逻辑里写着 `await sleep(5000)`（第 349 行）。
+//    后果：备份第一次失败时不是重试，而是抛 ReferenceError: sleep is not defined 把整个日更进程干掉 ——
+//    实测 2026-10-13 就是这样崩在备份那一步的。而抛出的位置在 catch 块里，
+//    所以日志上看起来像"备份失败"，很容易误判成备份本身的问题。
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const results = [];
 console.log(`===== 盘后日更 ${new Date().toLocaleString('zh-CN')} =====`);
@@ -141,6 +156,26 @@ console.log(`\n完成 ${results.length - failed.length}/${results.length}${faile
       console.log(`  ✗ 部署失败  exit=${e.status ?? '?'}（看板本身不受影响）`);
       results.push({ name: '部署 Pages', ok: false, ms: Date.now() - t0 });
     }
+  }
+}
+
+// ---------- 兜底性质的长任务：发布完成之后才跑 ----------
+// ⚠️ 2026-10-13 从步骤数组里挪出来放这里，原因是它把一整天的产出拖掉了：
+//    这一步增量回填「标记日·当日跌停家数随时间」曲线，设计上是"所有标记日都有曲线就立刻退出"，
+//    但只要有一天待回填，就要重新扫**全市场 5220 只**（实测 40 分钟）。
+//    它原来排在步骤数组里、**在生成看板和发布之前** —— 今天 15:40 那次跑到 23.7 分钟被杀
+//    （exit=0xC000013A，日志里能看到 ^C），后面所有步骤全没跑，用户看到的还是早上 09:26 那版。
+//    和 2026-10-09 丢盘后是同一类事故：**长任务排在关键路径前面**。
+//    现在它排在「生成看板 → 发布」**之后**：即使被杀，当天的页面也已经上线；曲线明天再补。
+//    代价：新标记日的曲线晚一天上图 —— 那个面板是历史回看用的，可以接受。
+if (!process.argv.includes('--no-intraday')) {
+  const t0 = Date.now();
+  try {
+    execFileSync('node', ['fetch-dt-intraday.mjs'], { stdio: 'inherit', timeout: 60 * 60 * 1000 });
+    console.log(`  ✓ 盘中跌停曲线回填  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    // 故意不记为失败：它是可选的增量回填，跑不完不该让整次日更算"未跑成"
+    console.log(`  ⚠️ 盘中跌停曲线未完成 exit=${e.status ?? '?'}（页面已发布，曲线下次再补）`);
   }
 }
 
@@ -308,7 +343,13 @@ if (SKIP_PUSH) {
     let backupErr = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        execFileSync('node', ['backup.mjs', `日更 ${today ?? ''}`.trim()], { stdio: 'inherit', timeout: 5 * 60 * 1000 });
+        // ⚠️ 这里原来写的是 `日更 ${today ?? ''}`，而 today 是 buildAndArchivePush() 的**函数局部变量**，
+        //    在这个作用域里根本不存在 → 抛 ReferenceError（被下面的 catch 吞掉，只显示"备份失败"）。
+        //    改成就地取最近交易日，不再依赖别处的变量。
+        const backupDay = (() => {
+          try { return JSON.parse(readFileSync('market-data.json', 'utf8')).at(-1)?.date ?? ''; } catch { return ''; }
+        })();
+        execFileSync('node', ['backup.mjs', `日更 ${backupDay}`.trim()], { stdio: 'inherit', timeout: 5 * 60 * 1000 });
         results.push({ name: '历史备份', ok: true, ms: Date.now() - t0 });
         backupErr = null;
         break;

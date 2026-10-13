@@ -88,15 +88,95 @@
 
   /** 账户总览（总资产 / 仓位 / 总市值 / 浮动盈亏 / 可用）。这些是后面仓位判断的基数。 */
   function parseAccount(text) {
+    // ⚠️ 分隔符要容忍两种：券商 App 用「总资产：547,957.91」，而手机「提取文字」常给成
+    //    「总资产 547,957.91」（标签和数字之间只剩空格）。只认冒号会整块读不到 —— 实测踩到。
     const pick = (re) => { const m = re.exec(text); return m ? parseFloat(m[1].replace(/,/g, '')) : null; };
+    const SEP = '[：:]\\s*|\\s+';
     const acct = {
-      assets: pick(/总资产[：:]\s*([\d,]+\.?\d*)/),
-      marketValue: pick(/总市值[：:]\s*([\d,]+\.?\d*)/),
-      pnl: pick(/浮动盈亏[：:]\s*(-?[\d,]+\.?\d*)/),
-      cash: pick(/可用[：:]\s*([\d,]+\.?\d*)\(?/),
-      posPct: pick(/仓位[：:]\s*([\d.]+)%/),
+      assets: pick(new RegExp('总资产(?:' + SEP + ')([\\d,]+\\.?\\d*)')),
+      marketValue: pick(new RegExp('总市值(?:' + SEP + ')([\\d,]+\\.?\\d*)')),
+      pnl: pick(new RegExp('浮动盈亏(?:' + SEP + ')(-?[\\d,]+\\.?\\d*)')),
+      cash: pick(new RegExp('可用(?:' + SEP + ')([\\d,]+\\.?\\d*)')),
+      posPct: pick(new RegExp('仓位(?:' + SEP + ')([\\d.]+)%')),
     };
     return Object.values(acct).some((v) => v != null) ? acct : null;
+  }
+
+  // ==================== 顺序模式：两行一只 / 按列纵向 ====================
+  // 为什么需要：银河证券持仓页是**一只股票占两行**的版式（名称+市值同一列上下两行，
+  // 持仓/可用、成本/现价也各占上下两行）。手机「提取文字」会按它自己的顺序把单元格吐出来，
+  // 常见有两种：① 按视觉行（两行一只）② 按列纵向（每格一行）。两者**数字顺序不同**。
+  //
+  // 与其赌用户手机上跑的是哪种，不如**用数据自身的冗余去反推**：
+  //   各股市值之和必须等于账户总市值，各股盈亏之和必须等于浮动盈亏。
+  // 把两种候选顺序都试一遍，谁对得上就用谁。对不上就按最可能的那种输出并**明确报警**，
+  // 让用户在确认表里改 —— 绝不静默选一个。
+  //
+  // ⚠️ 这两个模板是**银河证券持仓页**的字段顺序，写死在这里。换券商要重录。
+  const TEMPLATES = {
+    // ① 按视觉行（一行是「名称 盈亏 持仓 成本 当日盈亏 天数」，下一行是「市值 仓位% 盈亏% 可用 现价 当日%」）
+    视觉行: ['pnl', 'qty', 'cost', 'dayPnl', 'days', 'value', 'posPct', 'pnlpct', 'avail', 'price', 'dayPct'],
+    // ② 按列纵向（名称之后依次是：市值 仓位% 盈亏 盈亏% 持仓 可用 成本 现价 当日盈亏 当日% 天数）
+    列纵向: ['value', 'posPct', 'pnl', 'pnlpct', 'qty', 'avail', 'cost', 'price', 'dayPnl', 'dayPct', 'days'],
+  };
+
+  /** 一行里抽出所有数字（带千分位/百分号/正负号），返回原始字符串数组 */
+  const tokens = (line) => (line.match(/-?[\d,]+(?:\.\d+)?%?/g) ?? []).filter((x) => /\d/.test(x));
+  const toNum = (s) => parseFloat(String(s).replace(/[%,]/g, ''));
+
+  function parseStacked(text, account) {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    // 用「含中文且不含数字」的行当切分点 —— 那是股票名（如「华特气体」）
+    // 切分点 = 「行首是名字」的那一行。
+    // ⚠️ 不能用「整行不含数字」当条件：截图版式里名字和数字在**同一行**
+    //    （「华特气体 -29,667.85 900 147.874 999.00 41」），那样一条都切不出来 —— 实测踩到。
+    //    改成：取行首那个不含数字的 token 当股票名，行内其余数字归入本块。
+    const nameOf = (l) => {
+      const first = l.split(/\s+/)[0] ?? '';
+      return first.length >= 2 && first.length <= 12 && !/\d/.test(first) && /[\u4e00-\u9fa5A-Za-z]/.test(first) ? first : null;
+    };
+    const blocks = [];
+    let cur = null;
+    for (const l of lines) {
+      const nm = nameOf(l);
+      if (nm) { if (cur) blocks.push(cur); cur = { name: nm, nums: tokens(l.slice(nm.length)) }; continue; }
+      if (cur) cur.nums.push(...tokens(l));
+    }
+    if (cur) blocks.push(cur);
+    // 只保留「数字个数刚好够一个模板」的块（多退少补都会错位）
+    const need = Object.values(TEMPLATES)[0].length;
+    const usable = blocks.filter((b) => b.nums.length === need);
+    if (!usable.length) return null;
+
+    // 用账户总览的冗余挑模板：谁算出来的合计对得上就用谁
+    const fits = (tpl) => {
+      let sv = 0, sp = 0;
+      for (const b of usable) {
+        const o = {};
+        tpl.forEach((k, i) => { o[k] = toNum(b.nums[i]); });
+        sv += o.value ?? 0;
+        sp += o.pnl ?? 0;
+      }
+      const okV = account?.marketValue ? Math.abs(sv - account.marketValue) <= Math.max(1, account.marketValue * 0.005) : null;
+      const okP = account?.pnl != null ? Math.abs(sp - account.pnl) <= Math.max(1, Math.abs(account.pnl) * 0.005) : null;
+      return { okV, okP, score: (okV === true ? 1 : 0) + (okP === true ? 1 : 0), sv, sp };
+    };
+    const scored = Object.entries(TEMPLATES).map(([name, tpl]) => ({ name, tpl, fit: fits(tpl) }));
+    const best = scored.sort((a, b) => b.fit.score - a.fit.score)[0];
+    const rows = usable.map((b) => {
+      const o = {};
+      best.tpl.forEach((k, i) => { o[k] = toNum(b.nums[i]); });
+      return {
+        code: null, name: b.name,
+        qty: o.qty ?? null, avail: o.avail ?? null,
+        cost: o.cost ?? null, price: o.price ?? null,
+        value: o.value ?? null, posPct: o.posPct ?? null,
+        pnl: o.pnl ?? null, pnlpct: o.pnlpct ?? null,
+        dayPnl: o.dayPnl ?? null, dayPct: o.dayPct ?? null,
+        raw: b.nums.join(' '),
+      };
+    });
+    return { rows, templateUsed: best.name, allFits: scored.map((s) => ({ name: s.name, ...s.fit })) };
   }
 
   /**
@@ -252,6 +332,12 @@
     if (broker) {
       const checks = crossCheck(broker.rows, account);
       return { mode: 'broker', rows: broker.rows, account, checks };
+    }
+    // 顺序模式排在通用表头模式**之前**：截图版式下通用模式一条都认不出来，
+    // 而顺序模式能，且带自校验与模板判定。
+    const stacked = parseStacked(text, account);
+    if (stacked) {
+      return { mode: 'stacked', rows: stacked.rows, account, checks: crossCheck(stacked.rows, account), templateUsed: stacked.templateUsed, allFits: stacked.allFits };
     }
     const generic = parseTable(text) ?? parseScan(text) ?? { mode: 'none', rows: [] };
     return { ...generic, account, checks: crossCheck(generic.rows, account) };
@@ -443,7 +529,7 @@
   }
 
   // 供测试调用：解析器必须能被单独验证，不能只靠"页面上看着对"
-  window.HOLDINGS = { parse, splitCells, KEY, parseAccount, crossCheck, parseBroker, checkConcentration };
+  window.HOLDINGS = { parse, splitCells, KEY, parseAccount, crossCheck, parseBroker, checkConcentration, parseStacked, TEMPLATES };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
   else wire();
 })();
