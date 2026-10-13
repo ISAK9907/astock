@@ -407,6 +407,7 @@
       save(draft.filter((r) => r.code || r.name));
       if (draft_account) localStorage.setItem(ACCT_KEY, JSON.stringify(draft_account));
       renderSaved();
+      document.dispatchEvent(new CustomEvent('astock:changed'));
       draft = [];
       draft_checks = null;
       renderDraft();

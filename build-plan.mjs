@@ -2,12 +2,15 @@
 //
 // 页面按**收盘后的使用顺序**排：明日操作 → 检查清单 → ETF 一览 → 持仓 → 执行记录 → 日历 → 规则。
 // 和日更看板刻意分开：看板回答「今天发生了什么」，本页回答「我明天该不该动」。
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const PLAN = JSON.parse(readFileSync('plan-data.json', 'utf8'));
 const planJs = readFileSync('plan.js', 'utf8');
 const holdJs = readFileSync('plan-holdings.js', 'utf8');
 const logJs = readFileSync('plan-log.js', 'utf8');
+const gateJs = readFileSync('plan-gate.js', 'utf8');
+// 个股闸门数据（analyze-stocks.mjs 生成）。缺失时整块不渲染，不让页面因此崩掉。
+const GATE = existsSync('stock-gate.json') ? JSON.parse(readFileSync('stock-gate.json', 'utf8')) : null;
 const buildStamp = new Date().toISOString();
 
 const html = `<!doctype html><html lang="zh-CN"><head>
@@ -143,7 +146,10 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   截图里的「现价/盈亏」是<b>截图那一刻</b>的值，本页不假装它是实时行情。
 </div>
 
-<h2>⑤ 执行记录（闭环）</h2>
+<h2>⑤ 个股闸门（你定的加仓规则）</h2>
+<div id="pGate"></div>
+
+<h2>⑥ 执行记录（闭环）</h2>
 <div class="hbox">
   <div class="logform">
     <select id="logTarget" class="logf"></select>
@@ -166,16 +172,18 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   记录只在本机（<code>astock.exlog.v1</code>），<b>换设备或清缓存会丢，务必用下面的导出按钮备份</b>。
 </div>
 
-<h2>⑥ 日历过滤器</h2>
+<h2>⑦ 日历过滤器</h2>
 <div id="pCal"></div>
 
-<h2>⑦ 规则说明</h2>
+<h2>⑧ 规则说明</h2>
 <div id="pWhy"></div>
 
 <script>window.PLAN = ${JSON.stringify(PLAN)};</script>
+<script>window.GATE = ${JSON.stringify(GATE)};</script>
 <script>${planJs}</script>
 <script>${holdJs}</script>
 <script>${logJs}</script>
+<script>${gateJs}</script>
 <script>window.PLAN_BUILD = ${JSON.stringify(buildStamp)};</script>
 </body></html>`;
 

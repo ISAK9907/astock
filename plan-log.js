@@ -111,6 +111,7 @@
         why: j.why,
       });
       save(rows);
+      document.dispatchEvent(new CustomEvent('astock:changed'));
       if ($('logPrice')) $('logPrice').value = '';
       if ($('logQty')) $('logQty').value = '';
       if ($('logNote')) $('logNote').value = '';
