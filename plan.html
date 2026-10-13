@@ -335,6 +335,8 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 // 数据只存在本机浏览器的 localStorage，仓库里没有、也不会有（仓库是公开的）。
 (function () {
   const KEY = 'astock.holdings.v1';
+  // 公开的持仓快照文件名（不显眼命名，但仓库里可见 —— 见 deploy-pages.mjs 的说明）
+  const PUB_FILE = 'pa7k3f.json';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -824,25 +826,28 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     const box = $('holdSync');
     if (!box) return;
     try {
-      const r = await fetch('holdings.local.json', { cache: 'no-store' });
+      // 先试公网那份（用户已同意公开），再退回局域网那份（本机私有版）。
+      // 两份内容一样；公网那份随页面发布，所以任何网络下都能同步。
+      let r = await fetch(PUB_FILE, { cache: 'no-store' });
+      if (!r.ok) r = await fetch('holdings.local.json', { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       if (!j?.holdings?.length) throw new Error('文件里没有持仓');
       box.innerHTML =
-        `<button class="hbtn primary" id="holdSyncBtn" type="button">从电脑同步 ${j.holdings.length} 条持仓</button>` +
-        `<div class="dim" style="margin-top:6px;font-size:11.5px">来源：${esc(j.source ?? '电脑')} · 更新于 ${esc(String(j.updatedAt ?? '').slice(0, 16).replace('T', ' '))} · 会覆盖本机已存的持仓</div>`;
+        `<button class="hbtn primary" id="holdSyncBtn" type="button">同步持仓 ${j.holdings.length} 条</button>` +
+        `<div class="dim" style="margin-top:6px;font-size:11.5px">快照：${esc(j.source ?? '电脑')} · 更新于 ${esc(String(j.updatedAt ?? '').slice(0, 16).replace('T', ' '))} · 会覆盖本机已存的持仓</div>`;
       const btn = $('holdSyncBtn');
       if (btn) btn.addEventListener('click', () => {
         save(j.holdings);
         if (j.account) localStorage.setItem(ACCT_KEY, JSON.stringify(j.account));
         renderSaved();
-        box.innerHTML = `<div class="chkbox good">✓ 已从电脑同步 ${j.holdings.length} 条持仓（${esc(String(j.updatedAt ?? '').slice(0, 10))}）</div>`;
+        box.innerHTML = `<div class="chkbox good">✓ 已同步 ${j.holdings.length} 条持仓（快照日 ${esc(String(j.updatedAt ?? '').slice(0, 10))}）</div>`;
       });
     } catch {
       box.innerHTML =
         '<div class="dim" style="font-size:11.5px;line-height:1.75">' +
-        '「从电脑同步」只在你<b>连家里 WiFi</b>、并从 <code>http://192.168.110.159:8848/plan.html</code> 打开时可用。<br>' +
-        '从公网（GitHub Pages）打开时同步不了 —— <b>持仓只走局域网</b>，因为那个仓库是公开的，上去就等于公开你的仓位。' +
+        '取不到持仓快照 —— 可能是电脑上的局域网服务没开、或该文件还没发布。<br>' +
+        '你也可以在下面直接粘贴持仓文字来导入。' +
         '</div>';
     }
   }
@@ -1015,5 +1020,5 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   else wire();
 })();
 </script>
-<script>window.PLAN_BUILD = "2026-10-13T09:28:52.816Z";</script>
+<script>window.PLAN_BUILD = "2026-10-13T09:35:51.274Z";</script>
 </body></html>
