@@ -86,6 +86,27 @@ details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
 .chkbox.good{background:rgba(47,158,107,.12);border-left:3px solid #2f9e6b}
 .chkbox.bad{background:rgba(224,128,58,.14);border-left:3px solid #e0803a}
 .warnbox{background:rgba(224,128,58,.10);border:1px solid var(--line);border-left:3px solid #e0803a}
+/* ① 结论横幅的补充行 */
+.permnote{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
+/* 闸门状态灯：颜色就是结论 */
+.grow{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-left:4px solid;border-radius:8px;padding:9px 11px;margin-bottom:6px}
+.gdot{width:9px;height:9px;border-radius:5px;flex:none}
+.gname{font-weight:700;font-size:14px;min-width:66px}
+.gbig{font-weight:800;font-size:13px;min-width:44px}
+.gtags{display:flex;gap:4px;flex-wrap:wrap}
+.gtag{font-size:10.5px;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:1px 6px;white-space:nowrap}
+.gnum{margin-left:auto;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--dim)}
+/* 持仓大卡片 */
+.hpcard{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px}
+.hptop{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.hpname{font-weight:700;font-size:15.5px}
+.hpmv{font-weight:800;font-size:19px;font-variant-numeric:tabular-nums}
+.hpmid{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--dim);margin-top:5px;font-variant-numeric:tabular-nums}
+.hpmid b{color:var(--fg);font-size:12.5px}
+.hppnl{display:flex;gap:12px;flex-wrap:wrap;font-size:13.5px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;align-items:baseline}
+.hppnl .dim{font-size:11px;font-weight:400}
+.hpbar{height:3px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
+.hpbar i{display:block;height:100%;background:#5b8def}
 .dim{color:var(--dim)}
 code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 </style></head><body>
@@ -810,12 +831,25 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
       `<span>成本 <b>${cost.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b></span>` +
       `<span class="${pnl >= 0 ? 'pos' : 'neg'}">浮动 <b>${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b>` +
       `（${cost ? ((pnl / cost) * 100).toFixed(2) : '—'}%）</span></div>` +
-      `<div class="hrow hhead"><span>代码</span><span>名称</span><span>数量</span><span>成本</span><span>现价</span><span>占比</span></div>` +
+      // 逐只大卡片：市值最大字号 → 成本/现价次之 → 盈亏带色 → 占比最小。
+      // 原来的 6 列小字表格一屏塞 6 只但都看不清（用户反馈"排布不好识读"）。
       rows
         .map((r) => {
           const v = r.value ?? (r.price ?? r.cost ?? 0) * (r.qty ?? 0);
-          const share = value ? ((v / value) * 100).toFixed(1) : '—';
-          return `<div class="hrow"><span>${esc(r.code ?? '')}</span><span>${esc(r.name ?? '')}</span><span>${r.qty ?? ''}</span><span>${r.cost ?? ''}</span><span>${r.price ?? ''}</span><span>${share}%</span></div>`;
+          const cost = (r.cost ?? 0) * (r.qty ?? 0);
+          const p = r.pnl != null ? r.pnl : v - cost;
+          const pp = cost ? (p / cost) * 100 : null;
+          const share = value ? (v / value) * 100 : 0;
+          const shareA = acct?.assets ? (v / acct.assets) * 100 : null;
+          const col = p >= 0 ? '#e08a6a' : '#4fbf8f';
+          return `<div class="hpcard">` +
+            `<div class="hptop"><span class="hpname">${esc(r.name ?? '')}</span><span class="hpmv">${Math.round(v).toLocaleString('zh-CN')}</span></div>` +
+            `<div class="hpmid"><span>成本 <b>${r.cost ?? '—'}</b></span><span>现价 <b>${r.price ?? '—'}</b></span><span>${r.qty ?? ''} 股</span>` +
+            (r.avail != null && r.qty != null && r.avail < r.qty ? `<span class="dim">（可用 ${r.avail}）</span>` : '') + `</div>` +
+            `<div class="hppnl"><span style="color:${col}">${p >= 0 ? '+' : ''}${Math.round(p).toLocaleString('zh-CN')}</span>` +
+            `<span style="color:${col}">${pp == null ? '' : (pp >= 0 ? '+' : '') + pp.toFixed(2) + '%'}</span>` +
+            `<span class="dim">占持仓 ${share.toFixed(1)}%${shareA == null ? '' : ' · 占账户 ' + shareA.toFixed(1) + '%'}</span></div>` +
+            `<div class="hpbar"><i style="width:${Math.min(100, share)}%"></i></div></div>`;
         })
         .join('') +
       `<button class="hbtn" id="holdClear" type="button">清空本机持仓</button>`;
@@ -1095,6 +1129,18 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     return { ok, blocked: [...blocked, ...soft], info: { level: g?.level ?? '—', needDays: g?.needDays, needGap: g?.needGap, usedTranches, mv, A, thisV, secV, sec } };
   }
 
+  /** 把一条拒绝理由压成一个短标签（人眼扫的是颜色+短语，不是整句） */
+  function shortReason(s) {
+    if (/企稳「无」/.test(s)) return '仍在创新低';
+    if (/总仓位/.test(s)) return '总仓位满';
+    if (/单只上限/.test(s)) return '单只满';
+    if (/赛道/.test(s)) return '赛道满';
+    if (/档已用完/.test(s)) return '4档用完';
+    if (/距上次加仓只有/.test(s)) return '时间不够';
+    if (/距上次加仓价/.test(s)) return '空间不够';
+    return s.slice(0, 10);
+  }
+
   function render() {
     const box = $('pGate');
     if (!box) return;
@@ -1115,36 +1161,78 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 
     if (!holdings.length) { box.innerHTML = head; return; }
 
+    // 状态灯一行一只：颜色就是结论，短语就是原因。细节折叠，不占视线。
     const rows = Object.values(G.stocks).map((g) => {
       const r = checkAdd(g.name, tranche, holdings, acct, log);
-      const lv = { 强: '#2f9e6b', 中: '#5b8def', 弱: '#e0b23a', 无: '#e0803a' }[g.level] ?? 'var(--dim)';
+      const ok = r.ok;
+      const dot = ok ? '#2f9e6b' : '#e0803a';
+      const tags = r.blocked.map(shortReason).map((s) => `<span class="gtag">${esc(s)}</span>`).join('');
       return (
-        `<div class="card" style="margin-bottom:8px">` +
-        `<div class="chead"><span class="cname">${esc(g.name)}</span>` +
-        `<span class="cnum">${g.last}</span>` +
-        `<span class="zb" style="color:${lv};border-color:${lv}">企稳 ${esc(g.level)}</span>` +
-        `<span class="dim" style="font-size:11px;margin-left:auto">不创新低 ${g.streakNoLow} 天 · ${g.aboveMA20 ? 'MA20 上方' : 'MA20 下方'} · 距 60 日高 ${g.dd60}%</span></div>` +
-        (r.ok
-          ? `<div class="div good">✓ 允许加第 ${r.info.usedTranches + 1} 档（约 ${tranche.toLocaleString('zh-CN')}）</div>`
-          : `<div class="div warn">✗ 不允许加仓 —— 卡在：<br>${r.blocked.map((b) => '· ' + esc(b)).join('<br>')}</div>`) +
+        `<div class="grow" style="border-left-color:${dot}">` +
+        `<span class="gdot" style="background:${dot}"></span>` +
+        `<span class="gname">${esc(g.name)}</span>` +
+        `<span class="gbig" style="color:${ok ? '#2f9e6b' : '#e0803a'}">${ok ? '可加' : '不可加'}</span>` +
+        `<span class="gtags">${tags}</span>` +
+        `<span class="gnum">${g.last}</span>` +
         `</div>`
       );
     });
 
     box.innerHTML = head + rows.join('') +
       `<div class="dim" style="font-size:11px;line-height:1.8;margin-top:-2px">` +
-      `企稳等级只回答一个问题：<b>能不能在自由落体里补仓</b>。它不预测涨跌 —— ` +
+      `「企稳」只回答一个问题：<b>能不能在自由落体里补仓</b>。它不预测涨跌 —— ` +
       `我用 MA60 分档验过你这 5 只，华特是均值回归、融捷/中矿是动量，方向相反，均线当不了预测。<br>` +
       `层级换算是「有机结合」的落地方式：企稳强 → 短时间小价差也能加；企稳弱 → 必须拉得更开。` +
       `<b>但仓位硬约束不参与交换</b>。</div>`;
   }
 
+  /**
+   * ① 明日操作 —— **必须是关于你持仓的**。
+   * ⚠️ 改过一次：原来这一节由 plan.js 用服务端数据渲染，讲的是上证/沪深300 等 6 个宽基指数的价格线，
+   *    而用户一只都没持有。用户原话："明日操作里就没有我的持仓"。所以改到客户端渲染，
+   *    数据只用持仓 + 闸门，指数那部分降级到 ③ 并正名为"大盘估值参照"。
+   */
+  function renderVerdict() {
+    const box = $('pAction');
+    if (!box) return;
+    const holdings = rd(HKEY, []);
+    const acct = rd(AKEY, null);
+    const log = rd(LKEY, []);
+    if (!holdings.length) {
+      box.innerHTML = '<div class="perm" style="border-color:#5b8def"><div class="permk">明天做什么</div>' +
+        '<div class="permt" style="color:#5b8def">先导入持仓</div>' +
+        '<div class="permd">在 ④ 里点「同步持仓 6 条」，闸门才知道你有多少仓位、能不能加。</div></div>';
+      return;
+    }
+    const A = assets(holdings, acct);
+    const mv = holdings.reduce((s, h) => s + (h.value ?? (h.price ?? 0) * (h.qty ?? 0)), 0);
+    const tranche = Math.max(0, Math.round((A * R.maxTotalPos - mv) / R.tranches));
+    const used = log.filter((r) => r.action === 'add').length;
+    const res = Object.values(G.stocks).map((g) => ({ g, r: checkAdd(g.name, tranche, holdings, acct, log) }));
+    const allow = res.filter((x) => x.r.ok);
+    const block = res.filter((x) => !x.r.ok);
+    const color = allow.length ? '#2f9e6b' : '#e0803a';
+    const big = allow.length ? allow.length + ' 只可以加' : '5 只都不许加';
+    const sub = allow.length
+      ? allow.map((x) => x.g.name).join('、') + ' 满足加仓条件'
+      : block.slice(0, 3).map((x) => x.g.name + '（' + shortReason(x.r.blocked[0] || '') + '）').join('、') + (block.length > 3 ? ' 等 ' + block.length + ' 只' : '');
+    box.innerHTML =
+      '<div class="perm" style="border-color:' + color + '">' +
+      '<div class="permk" style="color:' + color + '">明天做什么 · 只看你的 5 只持仓</div>' +
+      '<div class="permt" style="color:' + color + '">' + esc(big) + '</div>' +
+      '<div class="permd">' + esc(sub) + '</div>' +
+      '<div class="permnote">可加空间 ' + Math.max(0, Math.round(A * R.maxTotalPos - mv)).toLocaleString('zh-CN') +
+      ' ÷ ' + R.tranches + ' 档 = 每档约 ' + tranche.toLocaleString('zh-CN') + '　·　已用 ' + used + '/' + R.tranches + ' 档</div>' +
+      '</div>';
+  }
+
   window.GATE_ADD = checkAdd;
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
-  else render();
+  const boot = () => { renderVerdict(); render(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
   // 持仓或记录变化后重算（plan-holdings.js / plan-log.js 保存时会派发这个事件）
-  document.addEventListener('astock:changed', render);
+  document.addEventListener('astock:changed', () => { renderVerdict(); render(); });
 })();
 </script>
-<script>window.PLAN_BUILD = "2026-10-13T11:10:21.992Z";</script>
+<script>window.PLAN_BUILD = "2026-10-13T11:15:27.364Z";</script>
 </body></html>
