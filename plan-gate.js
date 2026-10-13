@@ -249,8 +249,11 @@
     const items = [];
     // ① 单只超限（只针对真超了的）
     for (const h of holdings) {
+      // ⚠️ 量纲必须一致：share 是**百分数**（18.87），capOf 返回**小数**（0.20）。
+      //    原来写 share > cap：18.87 > 0.20 恒真 → 6 只全部被误报"已超过上限，只许减"。
+      //    用户反馈"逐条回答的东西算错"就是这个。分母（总资产）一直是对的，错的是比较。
       const cap = capOf(h.name), share = val(h) / A * 100;
-      if (share > cap) items.push({ k: 'warn', t: h.name + ' 占账户 ' + share.toFixed(1) + '%，已超过你设的 ' + (cap * 100).toFixed(0) + '% 上限 —— 只许减' });
+      if (share > cap * 100) items.push({ k: 'warn', t: h.name + ' 占账户 ' + share.toFixed(1) + '%，已超过你设的 ' + (cap * 100).toFixed(0) + '% 上限 —— 只许减' });
     }
     // ② 赛道超限
     const sec = {};
