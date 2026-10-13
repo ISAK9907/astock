@@ -101,6 +101,27 @@ details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
 .chkbox.good{background:rgba(47,158,107,.12);border-left:3px solid #2f9e6b}
 .chkbox.bad{background:rgba(224,128,58,.14);border-left:3px solid #e0803a}
 .warnbox{background:rgba(224,128,58,.10);border:1px solid var(--line);border-left:3px solid #e0803a}
+/* ① 结论横幅的补充行 */
+.permnote{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
+/* 闸门状态灯：颜色就是结论 */
+.grow{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-left:4px solid;border-radius:8px;padding:9px 11px;margin-bottom:6px}
+.gdot{width:9px;height:9px;border-radius:5px;flex:none}
+.gname{font-weight:700;font-size:14px;min-width:66px}
+.gbig{font-weight:800;font-size:13px;min-width:44px}
+.gtags{display:flex;gap:4px;flex-wrap:wrap}
+.gtag{font-size:10.5px;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:1px 6px;white-space:nowrap}
+.gnum{margin-left:auto;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--dim)}
+/* 持仓大卡片 */
+.hpcard{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px}
+.hptop{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.hpname{font-weight:700;font-size:15.5px}
+.hpmv{font-weight:800;font-size:19px;font-variant-numeric:tabular-nums}
+.hpmid{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--dim);margin-top:5px;font-variant-numeric:tabular-nums}
+.hpmid b{color:var(--fg);font-size:12.5px}
+.hppnl{display:flex;gap:12px;flex-wrap:wrap;font-size:13.5px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;align-items:baseline}
+.hppnl .dim{font-size:11px;font-weight:400}
+.hpbar{height:3px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
+.hpbar i{display:block;height:100%;background:#5b8def}
 .dim{color:var(--dim)}
 code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 </style></head><body>

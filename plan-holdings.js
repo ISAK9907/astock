@@ -483,12 +483,25 @@
       `<span>成本 <b>${cost.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b></span>` +
       `<span class="${pnl >= 0 ? 'pos' : 'neg'}">浮动 <b>${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b>` +
       `（${cost ? ((pnl / cost) * 100).toFixed(2) : '—'}%）</span></div>` +
-      `<div class="hrow hhead"><span>代码</span><span>名称</span><span>数量</span><span>成本</span><span>现价</span><span>占比</span></div>` +
+      // 逐只大卡片：市值最大字号 → 成本/现价次之 → 盈亏带色 → 占比最小。
+      // 原来的 6 列小字表格一屏塞 6 只但都看不清（用户反馈"排布不好识读"）。
       rows
         .map((r) => {
           const v = r.value ?? (r.price ?? r.cost ?? 0) * (r.qty ?? 0);
-          const share = value ? ((v / value) * 100).toFixed(1) : '—';
-          return `<div class="hrow"><span>${esc(r.code ?? '')}</span><span>${esc(r.name ?? '')}</span><span>${r.qty ?? ''}</span><span>${r.cost ?? ''}</span><span>${r.price ?? ''}</span><span>${share}%</span></div>`;
+          const cost = (r.cost ?? 0) * (r.qty ?? 0);
+          const p = r.pnl != null ? r.pnl : v - cost;
+          const pp = cost ? (p / cost) * 100 : null;
+          const share = value ? (v / value) * 100 : 0;
+          const shareA = acct?.assets ? (v / acct.assets) * 100 : null;
+          const col = p >= 0 ? '#e08a6a' : '#4fbf8f';
+          return `<div class="hpcard">` +
+            `<div class="hptop"><span class="hpname">${esc(r.name ?? '')}</span><span class="hpmv">${Math.round(v).toLocaleString('zh-CN')}</span></div>` +
+            `<div class="hpmid"><span>成本 <b>${r.cost ?? '—'}</b></span><span>现价 <b>${r.price ?? '—'}</b></span><span>${r.qty ?? ''} 股</span>` +
+            (r.avail != null && r.qty != null && r.avail < r.qty ? `<span class="dim">（可用 ${r.avail}）</span>` : '') + `</div>` +
+            `<div class="hppnl"><span style="color:${col}">${p >= 0 ? '+' : ''}${Math.round(p).toLocaleString('zh-CN')}</span>` +
+            `<span style="color:${col}">${pp == null ? '' : (pp >= 0 ? '+' : '') + pp.toFixed(2) + '%'}</span>` +
+            `<span class="dim">占持仓 ${share.toFixed(1)}%${shareA == null ? '' : ' · 占账户 ' + shareA.toFixed(1) + '%'}</span></div>` +
+            `<div class="hpbar"><i style="width:${Math.min(100, share)}%"></i></div></div>`;
         })
         .join('') +
       `<button class="hbtn" id="holdClear" type="button">清空本机持仓</button>`;

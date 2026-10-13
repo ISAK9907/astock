@@ -67,6 +67,18 @@
     return { ok, blocked: [...blocked, ...soft], info: { level: g?.level ?? '—', needDays: g?.needDays, needGap: g?.needGap, usedTranches, mv, A, thisV, secV, sec } };
   }
 
+  /** 把一条拒绝理由压成一个短标签（人眼扫的是颜色+短语，不是整句） */
+  function shortReason(s) {
+    if (/企稳「无」/.test(s)) return '仍在创新低';
+    if (/总仓位/.test(s)) return '总仓位满';
+    if (/单只上限/.test(s)) return '单只满';
+    if (/赛道/.test(s)) return '赛道满';
+    if (/档已用完/.test(s)) return '4档用完';
+    if (/距上次加仓只有/.test(s)) return '时间不够';
+    if (/距上次加仓价/.test(s)) return '空间不够';
+    return s.slice(0, 10);
+  }
+
   function render() {
     const box = $('pGate');
     if (!box) return;
@@ -87,33 +99,75 @@
 
     if (!holdings.length) { box.innerHTML = head; return; }
 
+    // 状态灯一行一只：颜色就是结论，短语就是原因。细节折叠，不占视线。
     const rows = Object.values(G.stocks).map((g) => {
       const r = checkAdd(g.name, tranche, holdings, acct, log);
-      const lv = { 强: '#2f9e6b', 中: '#5b8def', 弱: '#e0b23a', 无: '#e0803a' }[g.level] ?? 'var(--dim)';
+      const ok = r.ok;
+      const dot = ok ? '#2f9e6b' : '#e0803a';
+      const tags = r.blocked.map(shortReason).map((s) => `<span class="gtag">${esc(s)}</span>`).join('');
       return (
-        `<div class="card" style="margin-bottom:8px">` +
-        `<div class="chead"><span class="cname">${esc(g.name)}</span>` +
-        `<span class="cnum">${g.last}</span>` +
-        `<span class="zb" style="color:${lv};border-color:${lv}">企稳 ${esc(g.level)}</span>` +
-        `<span class="dim" style="font-size:11px;margin-left:auto">不创新低 ${g.streakNoLow} 天 · ${g.aboveMA20 ? 'MA20 上方' : 'MA20 下方'} · 距 60 日高 ${g.dd60}%</span></div>` +
-        (r.ok
-          ? `<div class="div good">✓ 允许加第 ${r.info.usedTranches + 1} 档（约 ${tranche.toLocaleString('zh-CN')}）</div>`
-          : `<div class="div warn">✗ 不允许加仓 —— 卡在：<br>${r.blocked.map((b) => '· ' + esc(b)).join('<br>')}</div>`) +
+        `<div class="grow" style="border-left-color:${dot}">` +
+        `<span class="gdot" style="background:${dot}"></span>` +
+        `<span class="gname">${esc(g.name)}</span>` +
+        `<span class="gbig" style="color:${ok ? '#2f9e6b' : '#e0803a'}">${ok ? '可加' : '不可加'}</span>` +
+        `<span class="gtags">${tags}</span>` +
+        `<span class="gnum">${g.last}</span>` +
         `</div>`
       );
     });
 
     box.innerHTML = head + rows.join('') +
       `<div class="dim" style="font-size:11px;line-height:1.8;margin-top:-2px">` +
-      `企稳等级只回答一个问题：<b>能不能在自由落体里补仓</b>。它不预测涨跌 —— ` +
+      `「企稳」只回答一个问题：<b>能不能在自由落体里补仓</b>。它不预测涨跌 —— ` +
       `我用 MA60 分档验过你这 5 只，华特是均值回归、融捷/中矿是动量，方向相反，均线当不了预测。<br>` +
       `层级换算是「有机结合」的落地方式：企稳强 → 短时间小价差也能加；企稳弱 → 必须拉得更开。` +
       `<b>但仓位硬约束不参与交换</b>。</div>`;
   }
 
+  /**
+   * ① 明日操作 —— **必须是关于你持仓的**。
+   * ⚠️ 改过一次：原来这一节由 plan.js 用服务端数据渲染，讲的是上证/沪深300 等 6 个宽基指数的价格线，
+   *    而用户一只都没持有。用户原话："明日操作里就没有我的持仓"。所以改到客户端渲染，
+   *    数据只用持仓 + 闸门，指数那部分降级到 ③ 并正名为"大盘估值参照"。
+   */
+  function renderVerdict() {
+    const box = $('pAction');
+    if (!box) return;
+    const holdings = rd(HKEY, []);
+    const acct = rd(AKEY, null);
+    const log = rd(LKEY, []);
+    if (!holdings.length) {
+      box.innerHTML = '<div class="perm" style="border-color:#5b8def"><div class="permk">明天做什么</div>' +
+        '<div class="permt" style="color:#5b8def">先导入持仓</div>' +
+        '<div class="permd">在 ④ 里点「同步持仓 6 条」，闸门才知道你有多少仓位、能不能加。</div></div>';
+      return;
+    }
+    const A = assets(holdings, acct);
+    const mv = holdings.reduce((s, h) => s + (h.value ?? (h.price ?? 0) * (h.qty ?? 0)), 0);
+    const tranche = Math.max(0, Math.round((A * R.maxTotalPos - mv) / R.tranches));
+    const used = log.filter((r) => r.action === 'add').length;
+    const res = Object.values(G.stocks).map((g) => ({ g, r: checkAdd(g.name, tranche, holdings, acct, log) }));
+    const allow = res.filter((x) => x.r.ok);
+    const block = res.filter((x) => !x.r.ok);
+    const color = allow.length ? '#2f9e6b' : '#e0803a';
+    const big = allow.length ? allow.length + ' 只可以加' : '5 只都不许加';
+    const sub = allow.length
+      ? allow.map((x) => x.g.name).join('、') + ' 满足加仓条件'
+      : block.slice(0, 3).map((x) => x.g.name + '（' + shortReason(x.r.blocked[0] || '') + '）').join('、') + (block.length > 3 ? ' 等 ' + block.length + ' 只' : '');
+    box.innerHTML =
+      '<div class="perm" style="border-color:' + color + '">' +
+      '<div class="permk" style="color:' + color + '">明天做什么 · 只看你的 5 只持仓</div>' +
+      '<div class="permt" style="color:' + color + '">' + esc(big) + '</div>' +
+      '<div class="permd">' + esc(sub) + '</div>' +
+      '<div class="permnote">可加空间 ' + Math.max(0, Math.round(A * R.maxTotalPos - mv)).toLocaleString('zh-CN') +
+      ' ÷ ' + R.tranches + ' 档 = 每档约 ' + tranche.toLocaleString('zh-CN') + '　·　已用 ' + used + '/' + R.tranches + ' 档</div>' +
+      '</div>';
+  }
+
   window.GATE_ADD = checkAdd;
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
-  else render();
+  const boot = () => { renderVerdict(); render(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
   // 持仓或记录变化后重算（plan-holdings.js / plan-log.js 保存时会派发这个事件）
-  document.addEventListener('astock:changed', render);
+  document.addEventListener('astock:changed', () => { renderVerdict(); render(); });
 })();
