@@ -76,9 +76,11 @@ const stat = git(['diff', '--cached', '--shortstat']);
 const FOREIGN = ['avradio/', '航空录音/', 'tools/workbench/', 'aviation/', '737/', 'gesture_keys/'];
 // 私人财务数据：即使 .gitignore 被改漏，这里也要拦下来
 const PRIVATE = ['holdings.local.json', 'deploy-config.json', 'push-config.json'];
+// 用户 2026-10-13 明确同意公开的持仓快照 —— 放行
+const PUB_OK = new Set(['pa7k3f.json']);
 const PRIVATE_BY_EXT = /\.local\.json$/;
 const foreign = files.filter((f) => FOREIGN.some((p) => f === p || f.startsWith(p)));
-const priv = files.filter((f) => PRIVATE.includes(f) || PRIVATE_BY_EXT.test(f));
+const priv = files.filter((f) => (PRIVATE.includes(f) || PRIVATE_BY_EXT.test(f)) && !PUB_OK.has(f));
 const MAX_FILES = 60;
 if ((foreign.length || priv.length || files.length > MAX_FILES) && !process.argv.includes('--allow-foreign')) {
   console.error('\n✗ 拒绝提交：暂存区里疑似混进了与本项目无关的文件');

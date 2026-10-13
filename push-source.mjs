@@ -53,10 +53,14 @@ const SECRET_LIKE = ['deploy-config.json', '.env', 'bark.json', 'push-config.jso
   //    扩展名类的判定交给下面的 PRIVATE_EXT。
   'holdings.local.json'];
 const PRIVATE_EXT = /\.local\.json$/;
+// 用户 2026-10-13 明确同意把持仓快照公开，所以这个文件**允许**推送；
+// 但 holdings.local.json / *.local.json 仍然拦（那是本机私有版）。
+const PUB_OK = new Set(['pa7k3f.json']);
 const hits = [];
 for (const f of files) {
   if (FOREIGN.some((p) => f === p || f.startsWith(p))) hits.push([f, '外来项目目录']);
   if (/\.(WAV|wav|zip|pyc|xlsx?|docx?|pptx?|mp3|mp4)$/i.test(f)) hits.push([f, '不应入库的文件类型']);
+  if (PUB_OK.has(f)) continue; // 用户同意公开的持仓快照
   if (SECRET_LIKE.some((s) => f.toLowerCase().includes(s))) hits.push([f, '疑似密钥/凭据']);
   if (PRIVATE_EXT.test(f)) hits.push([f, '私人数据文件（.local.json）']);
 }

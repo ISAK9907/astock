@@ -96,6 +96,10 @@ const FILES = [
   // ⚠️ 这里只上传**工具代码**。持仓数据按设计只存在手机浏览器的 localStorage 里，
   //    绝不上仓库 —— 这个仓库是公开的（Pages 免费版要求公开）。
   ['plan.html', 'plan.html'],
+  // ---- 公开的持仓快照（用户 2026-10-13 明确同意公开）----
+  // 文件名故意不显眼；但它**确实在公开仓库里**，不是保护措施。
+  // 想撤回：删掉这一行和 pa7k3f.json 文件，重新部署即可。
+  ['pa7k3f.json', 'pa7k3f.json'],
   ['version-plan.json', 'version-plan.json'],
   ['manifest-plan.webmanifest', 'manifest-plan.webmanifest'],
 ];
