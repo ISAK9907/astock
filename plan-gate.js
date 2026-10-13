@@ -164,10 +164,81 @@
       '</div>';
   }
 
+  /**
+   * 单只的可执行价格。**全部由已定的规则推导，没有一个是预测。**
+   * 这是用户要的"计划操作价格"——他之前否掉了估值价格线（周期股 PE 是反的），
+   * 所以这里给的是**流程价格**：要达到什么价才满足条件、以及止损在哪。
+   */
+  function planPrices(name, holdings, acct, log) {
+    const g = Object.values(G.stocks).find((s) => s.name === name);
+    if (!g) return [];
+    const out = [];
+    if (g.level !== '无') out.push(['站上 MA20（企稳前提）', '≥ ' + g.ma20.toFixed(2), g.last >= g.ma20]);
+    else out.push(['站上 MA20（企稳前提）', '≥ ' + g.ma20.toFixed(2) + '（现 ' + g.last + '）', false]);
+    out.push(['连续不创 20 日新低', g.streakNoLow + ' / ' + R.stability.弱.minNoLow + ' 天', g.streakNoLow >= R.stability.弱.minNoLow]);
+    const lastAdd = log.filter((r) => r.action === 'add' && r.target === name).slice(-1)[0];
+    const needGap = g.needGap ?? R.stability.弱.gap;
+    if (lastAdd?.price) {
+      out.push(['距上次加仓的空间', '≤ ' + (lastAdd.price * (1 - needGap / 100)).toFixed(2) + '（上次 ' + lastAdd.price + '，要求 ≥ ' + needGap + '%）', g.last <= lastAdd.price * (1 - needGap / 100)]);
+    } else {
+      out.push(['距上次加仓的空间', '本机还没有加仓记录', true]);
+    }
+    return out;
+  }
+
   window.GATE_ADD = checkAdd;
-  const boot = () => { renderVerdict(); render(); };
+  window.GATE_PRICES = planPrices;
+  /**
+   * ② 必须逐条回答 —— 改成**只讲你的持仓**。
+   * ⚠️ 原来这节由 plan.js 用服务端数据渲染，内容是「价值陷阱 / 价格在高位但估值不高 / 12–1 月小盘弱」
+   *    —— 全部在讲那 6 个宽基指数，用户一只都没持有。用户原话："逐条回答还是有不需要的东西"。
+   *    现在改成持仓口径：只列**你的持仓**里需要回答的问题，没有就明说"没有"。
+   */
+  function renderChecklist() {
+    const box = $('pCheck');
+    if (!box) return;
+    const holdings = rd(HKEY, []);
+    const acct = rd(AKEY, null);
+    if (!holdings.length) { box.innerHTML = '<div class="chk wait"><span class="chki">■</span><span>先在 ④ 导入持仓</span></div>'; return; }
+    const A = assets(holdings, acct);
+    const val = (h) => h.value ?? (h.price ?? h.cost ?? 0) * (h.qty ?? 0);
+    const items = [];
+    // ① 单只超限（只针对真超了的）
+    for (const h of holdings) {
+      const cap = capOf(h.name), share = val(h) / A * 100;
+      if (share > cap) items.push({ k: 'warn', t: h.name + ' 占账户 ' + share.toFixed(1) + '%，已超过你设的 ' + (cap * 100).toFixed(0) + '% 上限 —— 只许减' });
+    }
+    // ② 赛道超限
+    const sec = {};
+    for (const h of holdings) { const s = SECTOR[h.name] || '其他'; sec[s] = (sec[s] || 0) + val(h); }
+    for (const [s, v] of Object.entries(sec)) {
+      if (v / A * 100 > R.maxSector * 100) items.push({ k: 'warn', t: s + ' 赛道占账户 ' + (v / A * 100).toFixed(1) + '%，超过 ' + (R.maxSector * 100).toFixed(0) + '% 上限' });
+    }
+    // ③ 深亏的：要求回答"当初买它的理由还成立吗"
+    const deep = holdings.filter((h) => {
+      const cost = (h.cost ?? 0) * (h.qty ?? 0);
+      return cost > 0 && (val(h) - cost) / cost <= -0.20;
+    });
+    if (deep.length) items.push({ k: 'check', t: deep.map((h) => h.name).join('、') + '：亏损已超 20%，加仓前先回答「当初买它的理由还成立吗」' });
+    // ④ 企稳：今天有几只具备加仓前提
+    const g0 = window.GATE;
+    if (g0) {
+      const lv = Object.values(g0.stocks);
+      const none = lv.filter((s) => s.level === '无').length;
+      if (none) items.push({ k: 'wait', t: none + ' 只仍在创新低 / 站不上 MA20 —— 按规则今天不许加仓' });
+    }
+    // ⑤ 日历（只在与个股有关时出现）
+    const m = new Date().getMonth() + 1;
+    if ([4, 8, 10].includes(m)) items.push({ k: 'check', t: m + ' 月是财报截止月：个股不加新仓，留意持仓个股的预约披露日' });
+    if (!items.length) items.push({ k: 'act', t: '没有需要回答的问题 —— 持仓在约束内，也没有可执行的加仓' });
+    const icon = { act: '▶', wait: '■', check: '？', warn: '⚠' };
+    box.innerHTML = items.map((c) => '<div class="chk ' + c.k + '"><span class="chki">' + (icon[c.k] || '·') + '</span><span>' + esc(c.t) + '</span></div>').join('') +
+      '<div class="dim" style="margin-top:8px;font-size:11.5px">这一节只列<b>你的持仓</b>里需要回答的问题。大盘估值那部分在 ③。</div>';
+  }
+
+  const boot = () => { renderVerdict(); renderChecklist(); render(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   // 持仓或记录变化后重算（plan-holdings.js / plan-log.js 保存时会派发这个事件）
-  document.addEventListener('astock:changed', () => { renderVerdict(); render(); });
+  document.addEventListener('astock:changed', () => { renderVerdict(); renderChecklist(); render(); });
 })();

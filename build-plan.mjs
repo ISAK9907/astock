@@ -122,6 +122,14 @@ details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
 .hppnl .dim{font-size:11px;font-weight:400}
 .hpbar{height:3px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
 .hpbar i{display:block;height:100%;background:#5b8def}
+.hphint{font-size:10.5px;color:var(--dim);margin-top:6px}
+.hpdetail{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.hpadv{font-size:12.5px;line-height:1.6;padding:7px 9px;border-radius:7px;margin-bottom:8px}
+.hpadv.ok{background:rgba(47,158,107,.12);border-left:3px solid #2f9e6b}
+.hpadv.no{background:rgba(224,128,58,.13);border-left:3px solid #e0803a}
+.hpprice{font-size:11.5px;color:var(--dim);margin-bottom:5px}
+.hppr{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;font-variant-numeric:tabular-nums}
+.hppr span{color:var(--dim)}
 .dim{color:var(--dim)}
 code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 </style></head><body>

@@ -501,10 +501,41 @@
             `<div class="hppnl"><span style="color:${col}">${p >= 0 ? '+' : ''}${Math.round(p).toLocaleString('zh-CN')}</span>` +
             `<span style="color:${col}">${pp == null ? '' : (pp >= 0 ? '+' : '') + pp.toFixed(2) + '%'}</span>` +
             `<span class="dim">占持仓 ${share.toFixed(1)}%${shareA == null ? '' : ' · 占账户 ' + shareA.toFixed(1) + '%'}</span></div>` +
-            `<div class="hpbar"><i style="width:${Math.min(100, share)}%"></i></div></div>`;
+            `<div class="hpbar"><i style="width:${Math.min(100, share)}%"></i></div>` +
+            // 点开看：这只的建议 + 可执行价格（用户要的"滑动可以查看持仓建议，计划操作价格"）
+            `<div class="hpdetail" data-detail="${esc(r.name ?? '')}" hidden></div>` +
+            `<div class="hphint">点开看建议与计划操作价格 ▾</div></div>`;
         })
         .join('') +
       `<button class="hbtn" id="holdClear" type="button">清空本机持仓</button>`;
+    // 点卡片 → 展开建议 + 计划价格（数据来自 plan-gate.js 导出的函数）
+    box.querySelectorAll('.hpcard').forEach((card) => {
+      card.addEventListener('click', () => {
+        const d = card.querySelector('.hpdetail');
+        if (!d) return;
+        if (d.hidden && window.GATE_PRICES && window.GATE_ADD) {
+          const name = d.dataset.detail;
+          const holdings = load();
+          let acct = null; try { acct = JSON.parse(localStorage.getItem(ACCT_KEY) || 'null'); } catch { /* 忽略 */ }
+          let lg = []; try { lg = JSON.parse(localStorage.getItem('astock.exlog.v1') || '[]'); } catch { /* 忽略 */ }
+          const A = acct?.assets ?? holdings.reduce((s, h) => s + (h.value ?? 0), 0);
+          const mv = holdings.reduce((s, h) => s + (h.value ?? 0), 0);
+          const tranche = Math.max(0, Math.round((A * 0.70 - mv) / 4));
+          const r = window.GATE_ADD(name, tranche, holdings, acct, lg);
+          const rows = window.GATE_PRICES(name, holdings, acct, lg);
+          d.innerHTML =
+            '<div class="hpadv ' + (r.ok ? 'ok' : 'no') + '">' + (r.ok ? '✓ 允许加仓' : '✗ 不允许加仓') +
+            (r.blocked.length ? '：' + r.blocked.map(esc).join('；') : '') + '</div>' +
+            '<div class="hpprice"><b>计划操作价格</b>（由你定的规则推导，不是预测）</div>' +
+            rows.map(([k, v, hit]) => '<div class="hppr"><span>' + esc(k) + '</span><b style="color:' + (hit ? '#4fbf8f' : '#e08a3a') + '">' + esc(v) + '</b></div>').join('') +
+            '<div class="hppr"><span>下一档金额</span><b>' + tranche.toLocaleString('zh-CN') + '</b></div>' +
+            '<div class="hppr"><span>本笔止损价（新买入逐笔 −20%）</span><b>成交价 × 0.80</b></div>';
+        }
+        d.hidden = !d.hidden;
+        const hint = card.querySelector('.hphint');
+        if (hint) hint.textContent = d.hidden ? '点开看建议与计划操作价格 ▾' : '收起 ▴';
+      });
+    });
     const cb = $('holdClear');
     if (cb) cb.addEventListener('click', () => { if (confirm('确定清空本机保存的持仓？')) { localStorage.removeItem(KEY); localStorage.removeItem(ACCT_KEY); renderSaved(); } });
   }
