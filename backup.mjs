@@ -74,10 +74,15 @@ const stat = git(['diff', '--cached', '--shortstat']);
 //                            ② 单次快照的文件数上限（正常一次日更改动 1~40 个文件）。
 // 任何一条触发都拒绝提交，必须显式加 --allow-foreign 才放行。
 const FOREIGN = ['avradio/', '航空录音/', 'tools/workbench/', 'aviation/', '737/', 'gesture_keys/'];
+// 私人财务数据：即使 .gitignore 被改漏，这里也要拦下来
+const PRIVATE = ['holdings.local.json', 'deploy-config.json', 'push-config.json'];
+const PRIVATE_BY_EXT = /\.local\.json$/;
 const foreign = files.filter((f) => FOREIGN.some((p) => f === p || f.startsWith(p)));
+const priv = files.filter((f) => PRIVATE.includes(f) || PRIVATE_BY_EXT.test(f));
 const MAX_FILES = 60;
-if ((foreign.length || files.length > MAX_FILES) && !process.argv.includes('--allow-foreign')) {
+if ((foreign.length || priv.length || files.length > MAX_FILES) && !process.argv.includes('--allow-foreign')) {
   console.error('\n✗ 拒绝提交：暂存区里疑似混进了与本项目无关的文件');
+  if (priv.length) { console.error('  私人数据文件命中 ' + priv.length + ' 个：'); for (const f of priv) console.error('    ' + f); }
   if (foreign.length) {
     console.error(`  外来目录命中 ${foreign.length} 个：`);
     for (const f of foreign.slice(0, 12)) console.error(`    ${f}`);

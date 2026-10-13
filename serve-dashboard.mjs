@@ -278,6 +278,12 @@ const server = createServer((req, res) => {
     '/plan.html': ['plan.html', 'text/html; charset=utf-8', 'no-store'],
     '/version-plan.json': ['version-plan.json', 'application/json; charset=utf-8', 'no-store'],
     '/manifest-plan.webmanifest': ['manifest-plan.webmanifest', 'application/manifest+json; charset=utf-8', 'public, max-age=3600'],
+    // ---- 持仓同步：手机上「从电脑同步」时拉这个 ----
+    // ⚠️ 这是**私人财务数据**，只在局域网内可达，仓库里没有（.gitignore 排除，
+    //    backup.mjs / push-source.mjs 两道闸门也会拦）。必须 no-store，否则手机会一直拉到旧持仓。
+    // 为什么走局域网而不是云端：这个仓库是公开的，持仓上去就等于公开仓位。
+    //    代价：只有手机连家里 WiFi、且从局域网地址打开页面时才能同步 —— 持仓变动很少，够用。
+    '/holdings.local.json': ['holdings.local.json', 'application/json; charset=utf-8', 'no-store'],
   };
   if (PWA[url]) {
     const [name, type, cache] = PWA[url];

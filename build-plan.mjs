@@ -110,10 +110,18 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
 <h2>② 必须逐条回答</h2>
 <div id="pCheck"></div>
 
-<h2>③ ETF 估值一览</h2>
+<h2>③ 大盘估值参照</h2>
+<div class="hintbox" style="margin-bottom:9px;font-size:12px;line-height:1.75">
+  ⚠️ <b>这一节不是你持有的标的</b>，是上证/沪深300/中证500/中证2000/科创50/中证红利这 6 个宽基指数的估值分位 ——
+  只用来判断<b>大盘现在贵不贵</b>（你可以买指数 ETF，也可以只当背景看）。<br>
+  <b>为什么你的个股不在这一节</b>：这几只是周期股（电子特气跟半导体资本开支、锂跟碳酸锂价格），
+  它们的 PE 是<b>反的</b> —— 盈利崩塌时 PE 反而高、景气顶点 PE 反而低。拿「PE 分位越低越便宜」去套会把周期读反。
+  所以个股只在 ④ 里做<b>集中度与纪律</b>，不做估值价格线。
+</div>
 <div id="pTable"></div>
 
 <h2>④ 我的持仓</h2>
+<div id="holdSync"></div>
 <div class="hbox" id="holdSaved"></div>
 <div class="hbox">
   <label class="hlb"><b>上传持仓截图</b>（图片只在你手机里本地预览，不会上传到任何服务器）</label>

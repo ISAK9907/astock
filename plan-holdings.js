@@ -493,6 +493,37 @@
     if (cb) cb.addEventListener('click', () => { if (confirm('确定清空本机保存的持仓？')) { localStorage.removeItem(KEY); localStorage.removeItem(ACCT_KEY); renderSaved(); } });
   }
 
+  // 「从电脑同步」：手机连家里 WiFi、且从局域网地址打开时，拉电脑上的 holdings.local.json。
+  // ⚠️ 为什么走局域网而不是云端：这个仓库是**公开**的，持仓上去就等于公开仓位。
+  //    代价：从公网（GitHub Pages）打开时同步不了 —— 所以下面 catch 里要把这句话说清楚，
+  //    而不是静默失败（用户上一次的感受就是「没同步，也没告诉我为什么」）。
+  async function tryLanSync() {
+    const box = $('holdSync');
+    if (!box) return;
+    try {
+      const r = await fetch('holdings.local.json', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      if (!j?.holdings?.length) throw new Error('文件里没有持仓');
+      box.innerHTML =
+        `<button class="hbtn primary" id="holdSyncBtn" type="button">从电脑同步 ${j.holdings.length} 条持仓</button>` +
+        `<div class="dim" style="margin-top:6px;font-size:11.5px">来源：${esc(j.source ?? '电脑')} · 更新于 ${esc(String(j.updatedAt ?? '').slice(0, 16).replace('T', ' '))} · 会覆盖本机已存的持仓</div>`;
+      const btn = $('holdSyncBtn');
+      if (btn) btn.addEventListener('click', () => {
+        save(j.holdings);
+        if (j.account) localStorage.setItem(ACCT_KEY, JSON.stringify(j.account));
+        renderSaved();
+        box.innerHTML = `<div class="chkbox good">✓ 已从电脑同步 ${j.holdings.length} 条持仓（${esc(String(j.updatedAt ?? '').slice(0, 10))}）</div>`;
+      });
+    } catch {
+      box.innerHTML =
+        '<div class="dim" style="font-size:11.5px;line-height:1.75">' +
+        '「从电脑同步」只在你<b>连家里 WiFi</b>、并从 <code>http://192.168.110.159:8848/plan.html</code> 打开时可用。<br>' +
+        '从公网（GitHub Pages）打开时同步不了 —— <b>持仓只走局域网</b>，因为那个仓库是公开的，上去就等于公开你的仓位。' +
+        '</div>';
+    }
+  }
+
   function wire() {
     const file = $('holdFile');
     const img = $('holdImg');
@@ -526,6 +557,7 @@
     if (add) add.addEventListener('click', () => { draft.push({ code: '', name: '', qty: null, cost: null, price: null }); renderDraft(); });
     renderDraft();
     renderSaved();
+    tryLanSync();
   }
 
   // 供测试调用：解析器必须能被单独验证，不能只靠"页面上看着对"

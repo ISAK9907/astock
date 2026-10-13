@@ -46,12 +46,19 @@ if (files.some((f) => f === 'deploy-config.json')) { console.error('✗ deploy-c
 // 或者 .gitignore 又被改漏，这里就是唯一还能拦住的地方。
 // 2026-10-12 的教训：一次误暂存里含 9 个 .WAV 私人录音，当时仓库刚设为公开。
 const FOREIGN = ['avradio/', '航空录音/', 'tools/workbench/', 'aviation/', '737/', 'gesture_keys/'];
-const SECRET_LIKE = ['deploy-config.json', '.env', 'bark.json', 'push-config.json', 'credentials', 'id_rsa'];
+const SECRET_LIKE = ['deploy-config.json', '.env', 'bark.json', 'push-config.json', 'credentials', 'id_rsa',
+  // 私人财务数据的**精确文件名**。2026-10-13 新增 —— 这个仓库是公开的，进去就等于公开仓位。
+  // ⚠️ 这里只能写精确名，不能写 'holdings' 这种子串 —— 实测它会匹配到正当源码
+  //    plan-holdings.js，把整个推送拦下来（闸门本身没错，规则太宽）。
+  //    扩展名类的判定交给下面的 PRIVATE_EXT。
+  'holdings.local.json'];
+const PRIVATE_EXT = /\.local\.json$/;
 const hits = [];
 for (const f of files) {
   if (FOREIGN.some((p) => f === p || f.startsWith(p))) hits.push([f, '外来项目目录']);
   if (/\.(WAV|wav|zip|pyc|xlsx?|docx?|pptx?|mp3|mp4)$/i.test(f)) hits.push([f, '不应入库的文件类型']);
   if (SECRET_LIKE.some((s) => f.toLowerCase().includes(s))) hits.push([f, '疑似密钥/凭据']);
+  if (PRIVATE_EXT.test(f)) hits.push([f, '私人数据文件（.local.json）']);
 }
 if (hits.length) {
   console.error(`\n✗ 拒绝推送：待推清单里有 ${hits.length} 个可疑文件`);
