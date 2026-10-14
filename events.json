@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-13T08:24:00.175Z",
+ "generatedAt": "2026-10-14T07:40:10.146Z",
  "bilateralAsOf": "2026-09-21",
  "events": [
   {
@@ -8,8 +8,8 @@
    "name": "LPR 报价",
    "note": "官方固定：每月 20 日（遇周末顺延）",
    "src": "habit",
-   "days": 7,
-   "endDays": 7
+   "days": 6,
+   "endDays": 6
   },
   {
    "date": "2026-10-28",
@@ -18,8 +18,8 @@
    "name": "FOMC 议息会议",
    "note": "无点阵图",
    "src": "official",
-   "days": 15,
-   "endDays": 15
+   "days": 14,
+   "endDays": 14
   },
   {
    "date": "2026-10-28",
@@ -27,8 +27,8 @@
    "name": "中央政治局会议",
    "note": "按惯例：分析经济形势（4/7/10/12 月下旬）",
    "src": "habit",
-   "days": 15,
-   "endDays": 15
+   "days": 14,
+   "endDays": 14
   },
   {
    "date": "2026-10-31",
@@ -36,8 +36,8 @@
    "name": "官方制造业 PMI",
    "note": "按惯例：每月最后一天 09:30",
    "src": "habit",
-   "days": 18,
-   "endDays": 18
+   "days": 17,
+   "endDays": 17
   },
   {
    "date": "2026-11-05",
@@ -45,8 +45,8 @@
    "name": "中国国际进口博览会",
    "note": "按惯例：上海",
    "src": "habit",
-   "days": 23,
-   "endDays": 23
+   "days": 22,
+   "endDays": 22
   },
   {
    "date": "2026-11-18",
@@ -57,8 +57,8 @@
    "note": "中美元首通常在此期间场边会晤 · 深圳",
    "src": "official",
    "source": "人民网/深圳市政府",
-   "days": 36,
-   "endDays": 37
+   "days": 35,
+   "endDays": 36
   },
   {
    "date": "2026-12-09",
@@ -67,8 +67,8 @@
    "name": "FOMC 议息会议",
    "note": "含经济预测 + 点阵图",
    "src": "official",
-   "days": 57,
-   "endDays": 57
+   "days": 56,
+   "endDays": 56
   },
   {
    "date": "2026-12-14",
@@ -79,8 +79,8 @@
    "note": "中美元首通常出席 · 美国佛州",
    "src": "official",
    "source": "美财政部（Yonhap 报道）",
-   "days": 62,
-   "endDays": 63
+   "days": 61,
+   "endDays": 62
   },
   {
    "date": "2026-12-15",
@@ -88,8 +88,8 @@
    "name": "中央经济工作会议",
    "note": "按惯例：定调次年经济",
    "src": "habit",
-   "days": 63,
-   "endDays": 63
+   "days": 62,
+   "endDays": 62
   },
   {
    "date": "2027-01-20",
@@ -98,8 +98,8 @@
    "name": "世界经济论坛年会（达沃斯）",
    "note": "每年 1 月于瑞士 · 达沃斯 · 官方尚未公布具体日期，按惯例月份推算",
    "src": "habit",
-   "days": 99,
-   "endDays": 99
+   "days": 98,
+   "endDays": 98
   },
   {
    "date": "2027-01-27",
@@ -108,8 +108,8 @@
    "name": "FOMC 议息会议",
    "note": "无点阵图",
    "src": "official",
-   "days": 106,
-   "endDays": 106
+   "days": 105,
+   "endDays": 105
   },
   {
    "date": "2027-03-05",
@@ -117,8 +117,8 @@
    "name": "全国两会",
    "note": "按惯例：政府工作报告",
    "src": "habit",
-   "days": 143,
-   "endDays": 143
+   "days": 142,
+   "endDays": 142
   },
   {
    "date": "2027-03-17",
@@ -127,8 +127,8 @@
    "name": "FOMC 议息会议",
    "note": "含经济预测 + 点阵图",
    "src": "official",
-   "days": 155,
-   "endDays": 155
+   "days": 154,
+   "endDays": 154
   },
   {
    "date": "2027-03-27",
@@ -137,8 +137,8 @@
    "name": "博鳌亚洲论坛年会",
    "note": "每年 3–4 月于海南 · 海南博鳌 · 官方尚未公布具体日期，按惯例月份推算",
    "src": "habit",
-   "days": 165,
-   "endDays": 165
+   "days": 164,
+   "endDays": 164
   },
   {
    "date": "2027-04-28",
@@ -147,8 +147,8 @@
    "name": "FOMC 议息会议",
    "note": "无点阵图",
    "src": "official",
-   "days": 197,
-   "endDays": 197
+   "days": 196,
+   "endDays": 196
   },
   {
    "date": "2027-06-09",
@@ -157,8 +157,8 @@
    "name": "FOMC 议息会议",
    "note": "含经济预测 + 点阵图",
    "src": "official",
-   "days": 239,
-   "endDays": 239
+   "days": 238,
+   "endDays": 238
   }
  ]
 }

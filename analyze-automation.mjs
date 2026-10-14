@@ -114,9 +114,21 @@ const nowTrading = isTradingDay(todayIso);
 const runs = readRuns();
 
 // 日更 15:40 跑；15:30 之前「今天该不该有数据」要算到上一个交易日
-const dailyExpected = nowTrading && mins >= 15 * 60 + 30 ? todayIso : lastTradingDayOnOrBefore(iso(new Date(now.getTime() - 864e5)));
 // 盘前 09:26 跑；09:30 之前算到上一个交易日
-const preExpected = nowTrading && mins >= 9 * 60 + 30 ? todayIso : lastTradingDayOnOrBefore(iso(new Date(now.getTime() - 864e5)));
+//
+// ⚠️ 2026-10-14 修：本脚本由 daily-update.mjs / premarket.mjs **在流水线内部**调用，
+//    而 runs.jsonl 和 daily-update.log 都是**本次运行结束时**才追加的 —— 所以它永远看不到"本次"。
+//    后果很刺眼：2026-10-14 的日更 15:43 成功（version.json 与线上一致），
+//    但页面上那条状态带却写着「计划任务未跑成（落后 5 个交易日）」——
+//    一边是当天的新数据，一边说计划任务没跑，用户看到的是自相矛盾的页面。
+//    修法：流水线里调用时（DSH_IN_PIPELINE=1）把"今天"排除在应到日期之外，
+//    因为今天的这次运行**正在进行**，结束时才会记账。
+const IN_PIPELINE = process.env.DSH_IN_PIPELINE === '1';
+const prevTrading = lastTradingDayOnOrBefore(iso(new Date(now.getTime() - 864e5)));
+const rawDailyExpected = nowTrading && mins >= 15 * 60 + 30 ? todayIso : prevTrading;
+const rawPreExpected = nowTrading && mins >= 9 * 60 + 30 ? todayIso : prevTrading;
+const dailyExpected = IN_PIPELINE && rawDailyExpected === todayIso ? prevTrading : rawDailyExpected;
+const preExpected = IN_PIPELINE && rawPreExpected === todayIso ? prevTrading : rawPreExpected;
 
 function health(file, expected, schedule, label, okRe, kind, runs) {
   const last = lastStamp(file);
@@ -156,6 +168,7 @@ function health(file, expected, schedule, label, okRe, kind, runs) {
     lastDate: freshDate,
     expected,
     behind: behind ?? 0,
+    inPipeline: IN_PIPELINE,
     lastScheduledOk: lastScheduledOk ? bj(lastScheduledOk.at) : null,
     lastScheduledBehind: schBehind,
     lastManualOk: lastManualOk ? bj(lastManualOk.at) : null,
