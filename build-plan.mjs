@@ -11,7 +11,7 @@ const logJs = readFileSync('plan-log.js', 'utf8');
 const gateJs = readFileSync('plan-gate.js', 'utf8');
 // 个股闸门数据（analyze-stocks.mjs 生成）。缺失时整块不渲染，不让页面因此崩掉。
 const GATE = existsSync('stock-gate.json') ? JSON.parse(readFileSync('stock-gate.json', 'utf8')) : null;
-// 个股价格序列（画曲线+均线用）。**必须裁剪**：全量 5 只 ×1600 根会让页面涨近 300 KB，
+// 价格序列（画曲线+均线用）。**必须裁剪**：全量每只 ×1600 根会让页面涨近 300 KB，
 // 而卡片里只看近期趋势，250 根（约一年）足够。按 [日期, 收盘] 的紧凑格式内联。
 const CHART_BARS = 250;
 const STOCKS = (() => {

@@ -1,9 +1,12 @@
-// 个股闸门（客户端）：把用户定的规则变成"点加仓时能不能通过"的判定 + 渲染
+// 持仓闸门（客户端）：把用户定的规则变成"点加仓时能不能通过"的判定 + 渲染
 //
 // 数据来源三个，都是**客户端**的（持仓和交易记录只在手机上，不能上行）：
 //   window.GATE        ← stock-gate.json（服务端算好的企稳等级），build-plan.mjs 内联
 //   astock.holdings.v1 ← 持仓（同步来的或手输的）
 //   astock.exlog.v1    ← 执行记录（每笔加仓的日期与价格，用于判"时空"）
+//
+// 2026-10-16：企稳判定从「只有个股」扩到「ETF 也算」（用户要求）。规则不变 ——
+//   同一套 MA20/不创新低，只回答"能不能在自由落体里补仓"，不预测涨跌。
 //
 // 规则全部来自用户 2026-10-13 的原话，见 analyze-stocks.mjs 的注释。这里只负责执行，不解释对错。
 (function () {
@@ -15,7 +18,10 @@
   const HKEY = 'astock.holdings.v1', AKEY = 'astock.acct.v1', LKEY = 'astock.exlog.v1';
   const rd = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(d)); } catch { return d; } };
 
-  const SECTOR = { 华特气体: '电子特气', 中船特气: '电子特气', 融捷股份: '锂资源', 中矿资源: '锂资源', 比亚迪: '新能源汽车', 港股互联: '港股互联' };
+  // 赛道归类：用来判「同一赛道 ≤ 40%」这条硬约束。名字必须与持仓里的 name 完全一致。
+  // 2026-10-16 新增 科创200ETF；华特气体/中船特气 已清仓，但条目保留 —— 万一再买回来，
+  // 缺条目会让赛道硬约束**静默跳过**（checkAdd 里 `if (sec && ...)`），比多一条危险得多。
+  const SECTOR = { 华特气体: '电子特气', 中船特气: '电子特气', 融捷股份: '锂资源', 中矿资源: '锂资源', 比亚迪: '新能源汽车', 科创200ETF: '科创板宽基', 港股互联: '港股互联' };
   const capOf = (name) => (R.maxSingle[name] ?? R.maxSingle.default);
 
   /** 总资产：优先用账户总览，否则用持仓市值兜底 */
@@ -119,7 +125,7 @@
     box.innerHTML = head + rows.join('') +
       `<div class="dim" style="font-size:11px;line-height:1.8;margin-top:-2px">` +
       `「企稳」只回答一个问题：<b>能不能在自由落体里补仓</b>。它不预测涨跌 —— ` +
-      `我用 MA60 分档验过你这 5 只，华特是均值回归、融捷/中矿是动量，方向相反，均线当不了预测。<br>` +
+      `我拿 MA60 分档验过（华特是均值回归、融捷/中矿是动量，方向相反），均线当不了预测。<br>` +
       `层级换算是「有机结合」的落地方式：企稳强 → 短时间小价差也能加；企稳弱 → 必须拉得更开。` +
       `<b>但仓位硬约束不参与交换</b>。</div>`;
   }
@@ -139,7 +145,7 @@
     if (!holdings.length) {
       box.innerHTML = '<div class="perm" style="border-color:#5b8def"><div class="permk">明天做什么</div>' +
         '<div class="permt" style="color:#5b8def">先导入持仓</div>' +
-        '<div class="permd">在 ④ 里点「同步持仓 6 条」，闸门才知道你有多少仓位、能不能加。</div></div>';
+        '<div class="permd">在 ④ 里点「同步持仓」，闸门才知道你有多少仓位、能不能加。</div></div>';
       return;
     }
     const A = assets(holdings, acct);
@@ -150,13 +156,13 @@
     const allow = res.filter((x) => x.r.ok);
     const block = res.filter((x) => !x.r.ok);
     const color = allow.length ? '#2f9e6b' : '#e0803a';
-    const big = allow.length ? allow.length + ' 只可以加' : '5 只都不许加';
+    const big = allow.length ? allow.length + ' 只可以加' : res.length + ' 只都不许加';
     const sub = allow.length
       ? allow.map((x) => x.g.name).join('、') + ' 满足加仓条件'
       : block.slice(0, 3).map((x) => x.g.name + '（' + shortReason(x.r.blocked[0] || '') + '）').join('、') + (block.length > 3 ? ' 等 ' + block.length + ' 只' : '');
     box.innerHTML =
       '<div class="perm" style="border-color:' + color + '">' +
-      '<div class="permk" style="color:' + color + '">明天做什么 · 只看你的 5 只持仓</div>' +
+      '<div class="permk" style="color:' + color + '">明天做什么 · 只看你的 ' + res.length + ' 只持仓</div>' +
       '<div class="permt" style="color:' + color + '">' + esc(big) + '</div>' +
       '<div class="permd">' + esc(sub) + '</div>' +
       '<div class="permnote">可加空间 ' + Math.max(0, Math.round(A * R.maxTotalPos - mv)).toLocaleString('zh-CN') +
