@@ -567,7 +567,17 @@
           const r = window.GATE_ADD(name, tranche, holdings, acct, lg);
           const rows = window.GATE_PRICES(name, holdings, acct, lg);
           const chart = window.GATE_CHART ? window.GATE_CHART(name) : '';
+          // 见底四件事：每件事都标出"看哪个对象"——K线收盘价 / MACD柱 / DIF·DEA，避免看错线
+          const st = window.GATE_STEPS ? window.GATE_STEPS(name) : null;
+          const stepsHtml = st
+            ? '<div class="hpprice"><b>见底四件事</b>（依次出现才算见底；只有第 ④ 项放行加仓）</div>' +
+              st.steps.map((s, i) =>
+                '<div class="hppr"><span>' + (i + 1) + '. ' + esc(s.key) +
+                '<br><span class="dim" style="font-size:10.5px">看 ' + esc(s.on) + ' · ' + esc(s.value) + '</span></span>' +
+                '<b style="color:' + (s.ok ? '#4fbf8f' : '#7b8698') + '">' + (s.ok ? '✓' : '○') + '</b></div>').join('')
+            : '';
           d.innerHTML = chart +
+            stepsHtml +
             '<div class="hpadv ' + (r.ok ? 'ok' : 'no') + '">' + (r.ok ? '✓ 允许加仓' : '✗ 不允许加仓') +
             (r.blocked.length ? '：' + r.blocked.map(esc).join('；') : '') + '</div>' +
             '<div class="hpprice"><b>计划操作价格</b>（由你定的规则推导，不是预测）</div>' +
