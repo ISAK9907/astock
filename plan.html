@@ -1371,6 +1371,76 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   }
 
   /**
+   * MACD 背离（顶背离 / 底背离）—— 来自用户 2026-10-16 发的教学视频《看懂 MACD 背离》：
+   *   ① 两条线 DIF(快)/DEA(慢)  ② 一排柱子（速度在变快还是变慢）
+   *   ③ 背离：价格和速度不同步  ④ 实战
+   * 视频只讲了"背离是什么"，没给判定标准，所以这里的口径**必须写死且可复核**：
+   *   · MACD(12,26,9)，和卡片上图里画的是同一组数（同一窗口，绝不用另一套参数）
+   *   · 摆动点 = 前后各 K 根的局部最高/最低（K=5）
+   *   · 顶背离：后一个高点价格更高、但它的 DIF 更低   → 价格在涨、速度没跟上
+   *   · 底背离：后一个低点价格更低、但它的 DIF 更高   → 价格在跌、跌速在放慢
+   *   · 两个摆动点至少隔 MIN_GAP 根、后一个距今不超过 MAX_AGE 根（太久的不算）
+   * ⚠️ 它是**提示**，不是预测：会不会转向由市场决定。所以默认不参与加仓的硬判定，
+   *    只把事实和两个点的日期/价格/DIF 摆出来，由用户决定怎么用（见文件末尾的开关说明）。
+   */
+  const DIV = { K: 5, MIN_GAP: 8, MAX_AGE: 30, PRICE_EPS: 0.005 };
+
+  function macdOf(S) {
+    const closes = S.map((x) => x[1]);
+    const ema = (arr, n) => { const k = 2 / (n + 1); const out = []; let p = null; for (const v of arr) { p = p == null ? v : v * k + p * (1 - k); out.push(p); } return out; };
+    const e12 = ema(closes, 12), e26 = ema(closes, 26);
+    const dif = e12.map((v, i) => v - e26[i]);
+    const dea = ema(dif, 9);
+    return { closes, dif, dea, hist: dif.map((v, i) => (v - dea[i]) * 2) };
+  }
+
+  function swings(vals, k) {
+    const highs = [], lows = [];
+    for (let i = k; i < vals.length - k; i++) {
+      let isHigh = true, isLow = true;
+      for (let j = i - k; j <= i + k; j++) {
+        if (j === i) continue;
+        if (vals[j] >= vals[i]) isHigh = false;
+        if (vals[j] <= vals[i]) isLow = false;
+        if (!isHigh && !isLow) break;
+      }
+      if (isHigh) highs.push(i);
+      if (isLow) lows.push(i);
+    }
+    return { highs, lows };
+  }
+
+  /** 返回 {type:'顶'|'底'|null, ...}；type=null 表示当前窗口里没有可判定的背离 */
+  function divergence(name) {
+    const S = window.STOCKS?.[name];
+    if (!S || S.length < 60) return { type: null, why: '数据不足' };
+    const { closes, dif } = macdOf(S);
+    const n = closes.length;
+    const { highs, lows } = swings(closes, DIV.K);
+    const build = (idx, kind) => ({
+      kind,
+      dateA: S[idx[0]][0], priceA: +closes[idx[0]].toFixed(3), difA: +dif[idx[0]].toFixed(4),
+      dateB: S[idx[1]][0], priceB: +closes[idx[1]].toFixed(3), difB: +dif[idx[1]].toFixed(4),
+      gapBars: idx[1] - idx[0], ageBars: n - 1 - idx[1],
+    });
+    const lastPair = (arr, test) => {
+      for (let i = arr.length - 1; i >= 1; i--) {
+        const b = arr[i], a = arr[i - 1];
+        if (b - a < DIV.MIN_GAP) continue;
+        if (n - 1 - b > DIV.MAX_AGE) return null; // 最新的摆动点都太旧 → 当前没有背离
+        if (test(a, b)) return build([a, b], arr === highs ? 'top' : 'bottom');
+        return null; // 只判最近一对摆动点，避免"翻旧账"翻出一年前的背离
+      }
+      return null;
+    };
+    const top = lastPair(highs, (a, b) => closes[b] > closes[a] * (1 + DIV.PRICE_EPS) && dif[b] < dif[a]);
+    if (top) return { type: '顶', ...top };
+    const bottom = lastPair(lows, (a, b) => closes[b] < closes[a] * (1 - DIV.PRICE_EPS) && dif[b] > dif[a]);
+    if (bottom) return { type: '底', ...bottom };
+    return { type: null, why: '最近两个同类摆动点没有出现"价格与速度不同步"' };
+  }
+
+  /**
    * 价格曲线 + 均线（SVG，无依赖）。
    * 为什么这张图值得放进卡片：企稳判定用的是 MA20 和「不创新低」，光看数字很难判断
    * "离站上还有多远""是在走平还是继续下坠"。图上把 MA20 画成高亮线，一眼就能看出来。
@@ -1459,7 +1529,30 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
       '<span><i style="background:' + (hist.at(-1) >= 0 ? 'rgba(224,106,106,.7)' : 'rgba(79,191,143,.7)') + '"></i>MACD柱 ' +
         (hist.at(-1) >= 0 ? '+' : '') + hist.at(-1).toFixed(3) + '</span>' +
       '<span class="dim">MACD(12,26,9) · 仅作图</span>' +
-      '</div>';
+      '</div>' +
+      // ② 一排柱子 = 速度在变快还是变慢（视频里的说法）。只看最近 3 根，避免过度解读。
+      (() => {
+        const h = hist.slice(-3);
+        if (h.length < 3) return '';
+        const pos = h[2] >= 0;
+        const shrinking = Math.abs(h[2]) < Math.abs(h[0]);
+        const word = pos ? '红柱' : '绿柱';
+        const speed = shrinking ? '在缩短 → 速度变慢' : '在放大 → 速度变快';
+        return '<div class="hplegend"><span><i style="background:' + (pos ? 'rgba(224,106,106,.7)' : 'rgba(79,191,143,.7)') + '"></i>' +
+          word + ' 近 3 根' + speed + '</span></div>';
+      })() +
+      // ③ 背离：价格和速度不同步
+      (() => {
+        const d = divergence(name);
+        if (!d.type) return '';
+        const top = d.type === '顶';
+        return '<div class="hpadv ' + (top ? 'no' : 'ok') + '">' +
+          (top ? '⚠️ MACD 顶背离' : '● MACD 底背离') + '：' +
+          d.dateA + ' 收 ' + d.priceA + ' → ' + d.dateB + ' 收 ' + d.priceB +
+          '，DIF ' + d.difA + ' → ' + d.difB +
+          '（' + (top ? '价格更高、速度没跟上' : '价格更低、跌速在放慢') +
+          ' · 隔 ' + d.gapBars + ' 根 · 距今 ' + d.ageBars + ' 根）</div>';
+      })();
 
     return priceSvg + macdSvg;
   }
@@ -1467,6 +1560,7 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   window.GATE_ADD = checkAdd;
   window.GATE_PRICES = planPrices;
   window.GATE_CHART = renderChart;
+  window.GATE_DIVERGENCE = divergence;
   /**
    * ② 必须逐条回答 —— 改成**只讲你的持仓**。
    * ⚠️ 原来这节由 plan.js 用服务端数据渲染，内容是「价值陷阱 / 价格在高位但估值不高 / 12–1 月小盘弱」
@@ -1512,6 +1606,19 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     // ⑤ 日历（只在与个股有关时出现）
     const m = new Date().getMonth() + 1;
     if ([4, 8, 10].includes(m)) items.push({ k: 'check', t: m + ' 月是财报截止月：个股不加新仓，留意持仓个股的预约披露日' });
+    // ⑥ MACD 背离（用户 2026-10-16 发的视频《看懂 MACD 背离》：价格和速度不同步）
+    //    ⚠️ 只提示、不参与加仓的硬判定 —— 视频讲的是"背离是什么"，没给可执行的阈值；
+    //       要不要拿它当加减仓的条件，得用户自己定（工具不替他改规则）。
+    if (typeof divergence === 'function') {
+      const tops = [], bots = [];
+      for (const h of holdings) {
+        const d = divergence(h.name);
+        if (d.type === '顶') tops.push(h.name + '（' + d.dateB + ' 价格更高、DIF 更低）');
+        else if (d.type === '底') bots.push(h.name + '（' + d.dateB + ' 价格更低、DIF 更高）');
+      }
+      if (tops.length) items.push({ k: 'warn', t: 'MACD 顶背离 ' + tops.join('、') + ' —— 价格在涨、速度没跟上' });
+      if (bots.length) items.push({ k: 'check', t: 'MACD 底背离 ' + bots.join('、') + ' —— 价格在跌、跌速在放慢' });
+    }
     if (!items.length) items.push({ k: 'act', t: '没有需要回答的问题 —— 持仓在约束内，也没有可执行的加仓' });
     const icon = { act: '▶', wait: '■', check: '？', warn: '⚠' };
     // 口径说明：这一节的百分比分母是**账户总资产**（用户 2026-10-16 明确要求，
@@ -1535,5 +1642,5 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   document.addEventListener('astock:changed', () => { renderVerdict(); renderChecklist(); render(); });
 })();
 </script>
-<script>window.PLAN_BUILD = "2026-10-16T10:08:47.193Z";</script>
+<script>window.PLAN_BUILD = "2026-10-16T12:14:11.674Z";</script>
 </body></html>
