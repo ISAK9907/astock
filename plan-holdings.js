@@ -563,7 +563,11 @@
           const maxTotal = R?.maxTotalPos ?? 0.70;
           const nTranche = R?.tranches ?? 4;
           const stopLoss = R?.stopLoss ?? 0.20;
-          const tranche = Math.max(0, Math.round((A * maxTotal - mv) / nTranche));
+          const minCash = R?.minCash ?? 0.20;
+          // 每档金额取两条闸门里更紧的：总仓位上限 / 现金底线（用户的大前提：留 20% 现金）
+          const cashNow = acct?.cash != null ? acct.cash : Math.max(0, A - mv);
+          const room = Math.max(0, Math.min(A * maxTotal - mv, cashNow - minCash * A));
+          const tranche = Math.max(0, Math.round(room / nTranche));
           const r = window.GATE_ADD(name, tranche, holdings, acct, lg);
           const rows = window.GATE_PRICES(name, holdings, acct, lg);
           const chart = window.GATE_CHART ? window.GATE_CHART(name) : '';

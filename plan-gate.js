@@ -47,6 +47,13 @@
     const blocked = [];
 
     // ---- 硬约束：不参与交换 ----
+    // 现金底线是**账户级**的最后一道闸门（用户 2026-10-16 的大前提：留 20% 现金应对极端行情）。
+    // 为什么单独一条：单只/赛道上限各判各的，几只票分别"没超限"加起来照样能把现金吃光。
+    const cashNow = acct?.cash != null ? acct.cash : Math.max(0, A - mv);
+    const cashAfter = cashNow - amount;
+    if (R.minCash != null && cashAfter < R.minCash * A) {
+      blocked.push(`加仓后会跌破现金底线 ${(R.minCash * 100).toFixed(0)}%（现 ${(cashNow / A * 100).toFixed(1)}% → 加完 ${(cashAfter / A * 100).toFixed(1)}%）`);
+    }
     if (mv + amount > R.maxTotalPos * A) blocked.push(`总仓位会超过 ${(R.maxTotalPos * 100).toFixed(0)}%（现 ` + (mv / A * 100).toFixed(1) + '%）');
     if (thisV + amount > capOf(name) * A) blocked.push(`${name} 会超过单只上限 ${(capOf(name) * 100).toFixed(0)}%（现 ` + (thisV / A * 100).toFixed(1) + '%）');
     if (sec && secV + amount > R.maxSector * A) blocked.push(`${sec} 赛道会超过 ${(R.maxSector * 100).toFixed(0)}%（现 ` + (secV / A * 100).toFixed(1) + '%）');
@@ -82,6 +89,7 @@
   /** 把一条拒绝理由压成一个短标签（人眼扫的是颜色+短语，不是整句） */
   function shortReason(s) {
     if (/企稳「无」/.test(s)) return '仍在创新低';
+    if (/现金底线/.test(s)) return '现金不够';
     if (/总仓位/.test(s)) return '总仓位满';
     if (/单只上限/.test(s)) return '单只满';
     if (/赛道/.test(s)) return '赛道满';
@@ -98,14 +106,21 @@
     const acct = rd(AKEY, null);
     const log = rd(LKEY, []);
     const A = assets(holdings, acct);
-    const tranche = Math.round((A * R.maxTotalPos - (acct?.marketValue ?? holdings.reduce((s, h) => s + (h.value ?? 0), 0))) / R.tranches);
+    const mvNow = acct?.marketValue ?? holdings.reduce((s, h) => s + (h.value ?? 0), 0);
+    const cashNow = acct?.cash != null ? acct.cash : Math.max(0, A - mvNow);
+    // 可用空间取两条闸门里**更紧的那条**：总仓位上限 / 现金底线（用户 2026-10-16 的大前提）
+    const roomPos = A * R.maxTotalPos - mvNow;
+    const roomCash = R.minCash != null ? cashNow - R.minCash * A : Infinity;
+    const room = Math.max(0, Math.min(roomPos, roomCash));
+    const boundBy = roomCash < roomPos ? '现金底线' : '总仓位上限';
+    const tranche = Math.round(room / R.tranches);
     const used = log.filter((r) => r.action === 'add').length;
 
     let head =
       `<div class="hintbox" style="margin-bottom:9px;line-height:1.8;font-size:12px">` +
-      `<b>加仓闸门</b>（你定的规则，工具只执行）：总仓位 ≤ ${(R.maxTotalPos * 100).toFixed(0)}% · 单只 比亚迪 ${(R.maxSingle.比亚迪 * 100).toFixed(0)}%/其余 ${(R.maxSingle.default * 100).toFixed(0)}% · 赛道 ≤ ${(R.maxSector * 100).toFixed(0)}% · 账户级 ${R.tranches} 档 · 止损只对新买入逐笔 −${(R.stopLoss * 100).toFixed(0)}%<br>` +
+      `<b>加仓闸门</b>（你定的规则，工具只执行）：总仓位 ≤ ${(R.maxTotalPos * 100).toFixed(0)}% · <b>现金底线 ≥ ${R.minCash != null ? (R.minCash * 100).toFixed(0) + '%' : '—'}</b> · 单只 比亚迪 ${(R.maxSingle.比亚迪 * 100).toFixed(0)}%/其余 ${(R.maxSingle.default * 100).toFixed(0)}% · 赛道 ≤ ${(R.maxSector * 100).toFixed(0)}% · 账户级 ${R.tranches} 档 · 止损只对新买入逐笔 −${(R.stopLoss * 100).toFixed(0)}%<br>` +
       (holdings.length
-        ? `可用空间 <b>${Math.max(0, Math.round(A * R.maxTotalPos - (acct?.marketValue ?? holdings.reduce((s, h) => s + (h.value ?? 0), 0)))).toLocaleString('zh-CN')}</b> ÷ ${R.tranches} 档 = <b>每档约 ${tranche.toLocaleString('zh-CN')}</b>　·　已用 <b>${used}/${R.tranches}</b> 档`
+        ? `可用空间 <b>${Math.max(0, Math.round(room)).toLocaleString('zh-CN')}</b>（受限于${boundBy}）÷ ${R.tranches} 档 = <b>每档约 ${tranche.toLocaleString('zh-CN')}</b>　·　已用 <b>${used}/${R.tranches}</b> 档　·　现金 <b>${(cashNow / A * 100).toFixed(1)}%</b>`
         : `<span class="dim">本机还没有持仓 —— 先在下面 ④ 同步或导入，闸门才能算仓位空间</span>`) +
       `</div>`;
 
@@ -156,7 +171,10 @@
     }
     const A = assets(holdings, acct);
     const mv = holdings.reduce((s, h) => s + (h.value ?? (h.price ?? 0) * (h.qty ?? 0)), 0);
-    const tranche = Math.max(0, Math.round((A * R.maxTotalPos - mv) / R.tranches));
+    const cash = acct?.cash != null ? acct.cash : Math.max(0, A - mv);
+    // 每档金额同样取「总仓位上限」与「现金底线」里更紧的那条（大前提：留 20% 现金）
+    const room = Math.max(0, Math.min(A * R.maxTotalPos - mv, R.minCash != null ? cash - R.minCash * A : Infinity));
+    const tranche = Math.max(0, Math.round(room / R.tranches));
     const used = log.filter((r) => r.action === 'add').length;
     const res = Object.values(G.stocks).map((g) => ({ g, r: checkAdd(g.name, tranche, holdings, acct, log) }));
     const allow = res.filter((x) => x.r.ok);
@@ -171,8 +189,9 @@
       '<div class="permk" style="color:' + color + '">明天做什么 · 只看你的 ' + res.length + ' 只持仓</div>' +
       '<div class="permt" style="color:' + color + '">' + esc(big) + '</div>' +
       '<div class="permd">' + esc(sub) + '</div>' +
-      '<div class="permnote">可加空间 ' + Math.max(0, Math.round(A * R.maxTotalPos - mv)).toLocaleString('zh-CN') +
-      ' ÷ ' + R.tranches + ' 档 = 每档约 ' + tranche.toLocaleString('zh-CN') + '　·　已用 ' + used + '/' + R.tranches + ' 档</div>' +
+      '<div class="permnote">可加空间 ' + Math.max(0, Math.round(room)).toLocaleString('zh-CN') +
+      ' ÷ ' + R.tranches + ' 档 = 每档约 ' + tranche.toLocaleString('zh-CN') + '　·　已用 ' + used + '/' + R.tranches +
+      ' 档　·　现金 ' + (cash / A * 100).toFixed(1) + '%（底线 ' + (R.minCash != null ? (R.minCash * 100).toFixed(0) + '%' : '—') + '）</div>' +
       '</div>';
   }
 
