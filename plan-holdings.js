@@ -190,14 +190,23 @@
    *   盈利崩塌时 PE 反而高、景气顶点 PE 反而低。拿「PE 分位越低越便宜」去套会把周期读反。
    *   而集中度是纯算术，不依赖任何估值口径，也不依赖预测。
    */
-  function checkConcentration(rows, limits) {
-    const L = { maxSingle: 30, maxSector: 40, ...(limits ?? {}) };
+  function checkConcentration(rows, limits, accountAssets) {
+    const L = { maxSingle: 20, maxSector: 40, maxSingleByName: {}, ...(limits ?? {}) };
     const val = (r) => r.value ?? (r.price ?? r.cost ?? 0) * (r.qty ?? 0);
-    const value = rows.reduce((s, r) => s + val(r), 0);
+    const marketValue = rows.reduce((s, r) => s + val(r), 0);
+    // ⚠️ 分母必须是**账户总资产**，不是持仓市值。
+    //    用户 2026-10-16 明确要求：「所有集中度纪律都按总体账户算，而不是按持仓市值」。
+    //    按持仓市值会把「占账户 15%」的仓位读成「占持仓 60%」，把没超限的报成超限——
+    //    2026-10-13 的「必须逐条回答算错」就是这个错（华特气体占持仓 40%、占账户只有 18.9%）。
+    const hasAcct = typeof accountAssets === 'number' && accountAssets > 0;
+    const basisValue = hasAcct ? accountAssets : marketValue;
+    const basis = hasAcct ? 'account' : 'marketValue';
+    const capOf = (name) => (L.maxSingleByName?.[name] ?? L.maxSingle);
     const violations = [];
     for (const r of rows) {
-      const share = value ? (val(r) / value) * 100 : 0;
-      if (share > L.maxSingle) violations.push({ kind: 'single', name: r.name, share: +share.toFixed(1), limit: L.maxSingle });
+      const share = basisValue ? (val(r) / basisValue) * 100 : 0;
+      const cap = capOf(r.name);
+      if (share > cap) violations.push({ kind: 'single', name: r.name, share: +share.toFixed(1), limit: cap });
     }
     const bySector = new Map();
     for (const r of rows) {
@@ -209,10 +218,13 @@
       o.names.push(r.name);
     }
     const sectors = [...bySector.entries()]
-      .map(([sec, o]) => ({ sector: sec, names: o.names, value: +o.v.toFixed(2), share: value ? +((o.v / value) * 100).toFixed(1) : 0 }))
+      .map(([sec, o]) => ({ sector: sec, names: o.names, value: +o.v.toFixed(2), share: basisValue ? +((o.v / basisValue) * 100).toFixed(1) : 0 }))
       .sort((a, b) => b.share - a.share);
     for (const s of sectors) if (s.share > L.maxSector) violations.push({ kind: 'sector', name: s.sector, names: s.names, share: s.share, limit: L.maxSector });
-    return { value: +value.toFixed(2), violations, sectors, untagged: rows.filter((r) => !String(r.sector ?? '').trim()).length, limits: L };
+    return {
+      value: +marketValue.toFixed(2), basisValue: +basisValue.toFixed(2), basis,
+      violations, sectors, untagged: rows.filter((r) => !String(r.sector ?? '').trim()).length, limits: L,
+    };
   }
 
   /**
@@ -406,6 +418,8 @@
     if (sb) sb.addEventListener('click', () => {
       save(draft.filter((r) => r.code || r.name));
       if (draft_account) localStorage.setItem(ACCT_KEY, JSON.stringify(draft_account));
+      // 手工录入也算「本机已是最新」——否则下次打开页面会被快照自动覆盖掉手改的数字
+      try { localStorage.setItem(SNAP_KEY, lastSnapAt); } catch { /* 忽略 */ }
       renderSaved();
       document.dispatchEvent(new CustomEvent('astock:changed'));
       draft = [];
@@ -447,24 +461,47 @@
     // 但**集中度是纯算术**，不依赖任何估值假设，也不依赖预测。所以个股这块只做集中度与纪律。
     //
     // 阈值是**你的纪律，可改**。默认值是我给的起点，不是我的判断。
-    const C = checkConcentration(rows);
+    // 上限来自**唯一的那份规则**（plan-gate.js 用的 window.GATE.rules，源头 analyze-stocks.mjs）。
+    // 以前这里自己写死 30/40，和闸门里的 20/50 是两套数 —— 同一个页面给出两种结论。
+    const RULES = window.GATE?.rules;
+    const concLimits = RULES
+      ? {
+          maxSingle: RULES.maxSingle.default * 100,
+          maxSector: RULES.maxSector * 100,
+          maxSingleByName: Object.fromEntries(
+            Object.entries(RULES.maxSingle).filter(([k]) => k !== 'default').map(([k, v]) => [k, v * 100]),
+          ),
+        }
+      : undefined;
+    const C = checkConcentration(rows, concLimits, acct?.assets);
     const CONC = C.limits;
+    const basisName = C.basis === 'account' ? '账户总资产' : '持仓市值';
     const violations = C.violations.map((v) =>
       v.kind === 'single'
-        ? `单一标的 <b>${esc(v.name)}</b> 占持仓 ${v.share}% > 上限 ${v.limit}%`
-        : `赛道 <b>${esc(v.name)}</b>（${v.names.map(esc).join('+')}）占持仓 ${v.share}% > 上限 ${v.limit}%`,
+        ? `单一标的 <b>${esc(v.name)}</b> 占${basisName} ${v.share}% > 上限 ${v.limit}%`
+        : `赛道 <b>${esc(v.name)}</b>（${v.names.map(esc).join('+')}）占${basisName} ${v.share}% > 上限 ${v.limit}%`,
     );
     const sectorRows = C.sectors.map((s) => [s.sector, { v: s.value, names: s.names }]);
     const untagged = C.untagged;
 
     let concHtml = '';
+    // 没有账户总资产时先说清楚，否则下面的比例全是错的（这正是 10-16 用户报的问题）
+    if (C.basis === 'marketValue') {
+      concHtml +=
+        `<div class="chkbox warnbox"><b>⚠️ 比例现在按「持仓市值」算，不是按账户总资产</b><br>` +
+        `<span class="dim">你要求的是按<b>总体账户</b>算。缺账户总资产就只能拿持仓市值当分母，比例会系统性偏大（15% 的仓位会被读成 60%）。` +
+        `到 ④ 点「同步持仓」把账户总览一起拉下来就正常了。</span></div>`;
+    }
+    const capText = Object.entries(CONC.maxSingleByName ?? {}).map(([k, v]) => `${k} ${v}%`).join(' / ');
+    const capAll = `单一标的 其余 ${CONC.maxSingle}%${capText ? '（' + capText + '）' : ''} / 单一赛道 ${CONC.maxSector}%`;
     if (violations.length) {
-      concHtml =
+      concHtml +=
         `<div class="chkbox bad"><b>⚠️ 集中度纪律：${violations.length} 项超限</b><br>` +
         violations.join('<br>') +
-        `<br><span class="dim">这是纯算术，不依赖任何估值判断或预测。上限是可改的规则（单一标的 ${CONC.maxSingle}% / 单一赛道 ${CONC.maxSector}%）。</span></div>`;
+        `<br><span class="dim">分母 = ${basisName} ${(C.basisValue / 10000).toFixed(2)} 万 · 上限是可改的规则（${capAll}）。` +
+        `这是纯算术，不依赖任何估值判断或预测。</span></div>`;
     } else if (sectorRows.length) {
-      concHtml = `<div class="chkbox good">✓ 集中度纪律：没有超限项</div>`;
+      concHtml += `<div class="chkbox good">✓ 集中度纪律：没有超限项<span class="dim">（分母 ${basisName} ${(C.basisValue / 10000).toFixed(2)} 万 · 上限 ${capAll}）</span></div>`;
     }
     if (untagged) {
       concHtml +=
@@ -473,8 +510,8 @@
         `点上面「解析」重新贴一次，或手动给每只在「赛道」列填一个名字（如「电子特气」「锂资源」）。</span></div>`;
     }
     if (sectorRows.length) {
-      concHtml += `<div class="hstat" style="font-size:11.5px">按赛道：` +
-        sectorRows.map(([sec, o]) => `${esc(sec)} <b>${((o.v / value) * 100).toFixed(1)}%</b>`).join('　') + `</div>`;
+      concHtml += `<div class="hstat" style="font-size:11.5px">按赛道（占${basisName}）：` +
+        sectorRows.map(([sec, o]) => `${esc(sec)} <b>${((o.v / C.basisValue) * 100).toFixed(1)}%</b>`).join('　') + `</div>`;
     }
 
     box.innerHTML =
@@ -491,8 +528,9 @@
           const cost = (r.cost ?? 0) * (r.qty ?? 0);
           const p = r.pnl != null ? r.pnl : v - cost;
           const pp = cost ? (p / cost) * 100 : null;
-          const share = value ? (v / value) * 100 : 0;
-          const shareA = acct?.assets ? (v / acct.assets) * 100 : null;
+          const shareMv = value ? (v / value) * 100 : 0;
+          const shareAcct = acct?.assets ? (v / acct.assets) * 100 : null;
+          const shareMain = shareAcct ?? shareMv;
           const col = p >= 0 ? '#e08a6a' : '#4fbf8f';
           return `<div class="hpcard">` +
             `<div class="hptop"><span class="hpname">${esc(r.name ?? '')}</span><span class="hpmv">${Math.round(v).toLocaleString('zh-CN')}</span></div>` +
@@ -500,11 +538,11 @@
             (r.avail != null && r.qty != null && r.avail < r.qty ? `<span class="dim">（可用 ${r.avail}）</span>` : '') + `</div>` +
             `<div class="hppnl"><span style="color:${col}">${p >= 0 ? '+' : ''}${Math.round(p).toLocaleString('zh-CN')}</span>` +
             `<span style="color:${col}">${pp == null ? '' : (pp >= 0 ? '+' : '') + pp.toFixed(2) + '%'}</span>` +
-            `<span class="dim">占持仓 ${share.toFixed(1)}%${shareA == null ? '' : ' · 占账户 ' + shareA.toFixed(1) + '%'}</span></div>` +
-            `<div class="hpbar"><i style="width:${Math.min(100, share)}%"></i></div>` +
+            `<span class="dim">占账户 ${shareAcct == null ? '—（未同步）' : shareAcct.toFixed(1) + '%'} · 占持仓 ${shareMv.toFixed(1)}%</span></div>` +
+            `<div class="hpbar"><i style="width:${Math.min(100, shareMain)}%"></i></div>` +
             // 点开看：这只的建议 + 可执行价格（用户要的"滑动可以查看持仓建议，计划操作价格"）
             `<div class="hpdetail" data-detail="${esc(r.name ?? '')}" hidden></div>` +
-            `<div class="hphint">点开看建议与计划操作价格 ▾</div></div>`;
+            `<div class="hphint">点开看曲线·MACD·建议与计划操作价格 ▾</div></div>`;
         })
         .join('') +
       `<button class="hbtn" id="holdClear" type="button">清空本机持仓</button>`;
@@ -520,7 +558,12 @@
           let lg = []; try { lg = JSON.parse(localStorage.getItem('astock.exlog.v1') || '[]'); } catch { /* 忽略 */ }
           const A = acct?.assets ?? holdings.reduce((s, h) => s + (h.value ?? 0), 0);
           const mv = holdings.reduce((s, h) => s + (h.value ?? 0), 0);
-          const tranche = Math.max(0, Math.round((A * 0.70 - mv) / 4));
+          // 档位金额与止损率都取闸门那份规则，别在这里再写一遍数字
+          const R = window.GATE?.rules;
+          const maxTotal = R?.maxTotalPos ?? 0.70;
+          const nTranche = R?.tranches ?? 4;
+          const stopLoss = R?.stopLoss ?? 0.20;
+          const tranche = Math.max(0, Math.round((A * maxTotal - mv) / nTranche));
           const r = window.GATE_ADD(name, tranche, holdings, acct, lg);
           const rows = window.GATE_PRICES(name, holdings, acct, lg);
           const chart = window.GATE_CHART ? window.GATE_CHART(name) : '';
@@ -530,21 +573,38 @@
             '<div class="hpprice"><b>计划操作价格</b>（由你定的规则推导，不是预测）</div>' +
             rows.map(([k, v, hit]) => '<div class="hppr"><span>' + esc(k) + '</span><b style="color:' + (hit ? '#4fbf8f' : '#e08a3a') + '">' + esc(v) + '</b></div>').join('') +
             '<div class="hppr"><span>下一档金额</span><b>' + tranche.toLocaleString('zh-CN') + '</b></div>' +
-            '<div class="hppr"><span>本笔止损价（新买入逐笔 −20%）</span><b>成交价 × 0.80</b></div>';
+            '<div class="hppr"><span>本笔止损价（新买入逐笔 −' + Math.round(stopLoss * 100) + '%）</span><b>成交价 × ' + (1 - stopLoss).toFixed(2) + '</b></div>';
         }
         d.hidden = !d.hidden;
         const hint = card.querySelector('.hphint');
-        if (hint) hint.textContent = d.hidden ? '点开看建议与计划操作价格 ▾' : '收起 ▴';
+        if (hint) hint.textContent = d.hidden ? '点开看曲线·MACD·建议与计划操作价格 ▾' : '收起 ▴';
       });
     });
     const cb = $('holdClear');
-    if (cb) cb.addEventListener('click', () => { if (confirm('确定清空本机保存的持仓？')) { localStorage.removeItem(KEY); localStorage.removeItem(ACCT_KEY); renderSaved(); } });
+    if (cb) cb.addEventListener('click', () => { if (confirm('确定清空本机保存的持仓？')) { localStorage.removeItem(KEY); localStorage.removeItem(ACCT_KEY); try { localStorage.removeItem(SNAP_KEY); } catch { /* 忽略 */ } renderSaved(); } });
   }
 
   // 「从电脑同步」：手机连家里 WiFi、且从局域网地址打开时，拉电脑上的 holdings.local.json。
   // ⚠️ 为什么走局域网而不是云端：这个仓库是**公开**的，持仓上去就等于公开仓位。
   //    代价：从公网（GitHub Pages）打开时同步不了 —— 所以下面 catch 里要把这句话说清楚，
   //    而不是静默失败（用户上一次的感受就是「没同步，也没告诉我为什么」）。
+  // 本机已套用的快照时间。用它判断「公网那份是不是比本机新」，新就自动套用。
+  const SNAP_KEY = 'astock.holdings.appliedAt';
+  let lastSnapAt = '';
+
+  /** 把一份快照写进本机（持仓 + 账户总览），并**广播变更** */
+  function applySnapshot(j) {
+    save(j.holdings);
+    if (j.account) localStorage.setItem(ACCT_KEY, JSON.stringify(j.account));
+    lastSnapAt = String(j.updatedAt ?? '');
+    try { localStorage.setItem(SNAP_KEY, lastSnapAt); } catch { /* 忽略 */ }
+    renderSaved();
+    // ⚠️ 这行不能省。①明日操作 / ②必须逐条回答 / ③加仓闸门 都只监听 astock:changed，
+    //    少了它，同步完只有 ④ 持仓卡片会变，上面三节还停在同步前的持仓上——
+    //    2026-10-16 用户报的「②还在讲华特气体」就是这个（同步后没重算，要等下次打开页面）。
+    document.dispatchEvent(new CustomEvent('astock:changed'));
+  }
+
   async function tryLanSync() {
     const box = $('holdSync');
     if (!box) return;
@@ -556,15 +616,27 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       if (!j?.holdings?.length) throw new Error('文件里没有持仓');
-      box.innerHTML =
-        `<button class="hbtn primary" id="holdSyncBtn" type="button">同步持仓 ${j.holdings.length} 条</button>` +
-        `<div class="dim" style="margin-top:6px;font-size:11.5px">快照：${esc(j.source ?? '电脑')} · 更新于 ${esc(String(j.updatedAt ?? '').slice(0, 16).replace('T', ' '))} · 会覆盖本机已存的持仓</div>`;
+      const snapAt = String(j.updatedAt ?? '');
+      const stamp = snapAt.slice(0, 16).replace('T', ' ');
+      const appliedAt = (() => { try { return localStorage.getItem(SNAP_KEY) || ''; } catch { return ''; } })();
+      // 快照比本机新 → 自动套用。用户 2026-10-16 的原话：「应该按照我的持仓实时变更」，
+      // 不能让他每次自己想起来点同步。
+      if (snapAt && snapAt !== appliedAt) {
+        applySnapshot(j);
+        box.innerHTML =
+          `<div class="chkbox good">✓ 已按最新快照自动更新 <b>${j.holdings.length}</b> 条（${esc(stamp)}）</div>` +
+          `<div class="dim" style="margin-top:6px;font-size:11.5px">快照：${esc(j.source ?? '电脑')} · 上面的 ①②③ 已同步重算</div>` +
+          `<button class="hbtn" id="holdSyncBtn" type="button">再同步一次</button>`;
+      } else {
+        box.innerHTML =
+          `<div class="chkbox good" style="margin-bottom:8px">✓ 持仓已是最新快照（${esc(stamp || '未知')}，${j.holdings.length} 条）</div>` +
+          `<button class="hbtn" id="holdSyncBtn" type="button">重新同步</button>` +
+          `<div class="dim" style="margin-top:6px;font-size:11.5px">快照：${esc(j.source ?? '电脑')} · 会覆盖本机已存的持仓</div>`;
+      }
       const btn = $('holdSyncBtn');
       if (btn) btn.addEventListener('click', () => {
-        save(j.holdings);
-        if (j.account) localStorage.setItem(ACCT_KEY, JSON.stringify(j.account));
-        renderSaved();
-        box.innerHTML = `<div class="chkbox good">✓ 已同步 ${j.holdings.length} 条持仓（快照日 ${esc(String(j.updatedAt ?? '').slice(0, 10))}）</div>`;
+        applySnapshot(j);
+        box.innerHTML = `<div class="chkbox good">✓ 已同步 ${j.holdings.length} 条持仓（快照 ${esc(stamp)}）</div>`;
       });
     } catch {
       box.innerHTML =

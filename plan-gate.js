@@ -196,7 +196,8 @@
    * 价格曲线 + 均线（SVG，无依赖）。
    * 为什么这张图值得放进卡片：企稳判定用的是 MA20 和「不创新低」，光看数字很难判断
    * "离站上还有多远""是在走平还是继续下坠"。图上把 MA20 画成高亮线，一眼就能看出来。
-   * ⚠️ 仅作图，不做任何预测 —— 均线的预测力我在这 5 只上验过，是反的（华特均值回归、融捷动量）。
+   * 2026-10-16 加了 MACD 子图（用户要求）。
+   * ⚠️ 仅作图，不做任何预测 —— 均线的预测力我在这几只上验过，是反的（华特均值回归、融捷动量）。
    */
   function renderChart(name) {
     const S = window.STOCKS?.[name];
@@ -218,7 +219,7 @@
     const up = lastC >= (lastMA20 ?? lastC);
     // x 轴只标首末日期，避免手机上糊成一团
     const d0 = S[0][0].slice(5), d1 = S.at(-1)[0].slice(5);
-    return '<svg class="hpsvg" viewBox="0 0 ' + W + ' ' + Hh + '" preserveAspectRatio="none">' +
+    const priceSvg = '<svg class="hpsvg" viewBox="0 0 ' + W + ' ' + Hh + '" preserveAspectRatio="none">' +
       '<path d="' + path(closes) + '" fill="none" stroke="' + (up ? '#e08a6a' : '#4fbf8f') + '" stroke-width="1.4"/>' +
       '<path d="' + path(m5) + '" fill="none" stroke="rgba(150,160,180,.5)" stroke-width="1" stroke-dasharray="3 2"/>' +
       // MA20 是企稳判定的那条线，画粗、高亮
@@ -233,6 +234,56 @@
       '<span><i style="background:rgba(224,128,58,.75)"></i>MA60 ' + (lastMA60 == null ? '—' : lastMA60.toFixed(2)) + '</span>' +
       '<span><i style="background:rgba(150,160,180,.5)"></i>MA5</span>' +
       '</div>';
+
+    // ---------------- MACD（12,26,9） ----------------
+    // 用户 2026-10-16 要求：卡片点开后除了日K曲线，再加 MACD。
+    // ⚠️ 同样**只作图、不下结论** —— 不写"金叉可买"这类话。理由和均线一样：
+    //    我在这几只用 MA60 分档实测过，方向是反的（华特均值回归、融捷/中矿是动量），
+    //    所以图表只负责把状态画出来，判定仍然只走「企稳」那一套可复核的条件。
+    // 窗口就是页面内联的 250 根（约一年）：EMA 起点略早于窗口，前几十根会有一点收敛过程，
+    // 看图足够；要精确复算请用完整日线。
+    const ema = (arr, n) => {
+      const k = 2 / (n + 1);
+      const out = [];
+      let prev = null;
+      for (const v of arr) { prev = prev == null ? v : v * k + prev * (1 - k); out.push(prev); }
+      return out;
+    };
+    const e12 = ema(closes, 12), e26 = ema(closes, 26);
+    const dif = e12.map((v, i) => v - e26[i]);
+    const dea = ema(dif, 9);
+    const hist = dif.map((v, i) => (v - dea[i]) * 2); // 国内习惯：柱 = (DIF−DEA)×2
+    const MH = 96, MP = { t: 6, r: 6, b: 10, l: 6 };
+    const amp = Math.max(...dif.map(Math.abs), ...dea.map(Math.abs), ...hist.map(Math.abs)) || 1;
+    const MY = (v) => MP.t + (1 - (v + amp) / (2 * amp)) * (MH - MP.t - MP.b);
+    const mpath = (arr) => {
+      let d = '', open = false;
+      arr.forEach((v, i) => { d += (open ? 'L' : 'M') + X(i).toFixed(1) + ' ' + MY(v).toFixed(1); open = true; });
+      return d;
+    };
+    const bw = Math.max(1, ((W - MP.l - MP.r) / Math.max(1, S.length - 1)) * 0.62);
+    const zeroY = MY(0);
+    const bars = hist.map((v, i) => {
+      const y1 = MY(v);
+      const top = Math.min(zeroY, y1), h = Math.max(0.6, Math.abs(y1 - zeroY));
+      return '<rect x="' + (X(i) - bw / 2).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(2) +
+        '" height="' + h.toFixed(1) + '" fill="' + (v >= 0 ? 'rgba(224,106,106,.55)' : 'rgba(79,191,143,.5)') + '"/>';
+    }).join('');
+    const macdSvg = '<svg class="hpsvg" viewBox="0 0 ' + W + ' ' + MH + '" preserveAspectRatio="none" style="margin-top:1px">' +
+      '<line x1="' + MP.l + '" y1="' + zeroY.toFixed(1) + '" x2="' + (W - MP.r) + '" y2="' + zeroY.toFixed(1) + '" stroke="#2b3341" stroke-width="1"/>' +
+      bars +
+      '<path d="' + mpath(dif) + '" fill="none" stroke="#5b8def" stroke-width="1.4"/>' +
+      '<path d="' + mpath(dea) + '" fill="none" stroke="rgba(224,128,58,.9)" stroke-width="1.2"/>' +
+      '</svg>' +
+      '<div class="hplegend">' +
+      '<span><i style="background:#5b8def"></i>DIF ' + dif.at(-1).toFixed(3) + '</span>' +
+      '<span><i style="background:rgba(224,128,58,.9)"></i>DEA ' + dea.at(-1).toFixed(3) + '</span>' +
+      '<span><i style="background:' + (hist.at(-1) >= 0 ? 'rgba(224,106,106,.7)' : 'rgba(79,191,143,.7)') + '"></i>MACD柱 ' +
+        (hist.at(-1) >= 0 ? '+' : '') + hist.at(-1).toFixed(3) + '</span>' +
+      '<span class="dim">MACD(12,26,9) · 仅作图</span>' +
+      '</div>';
+
+    return priceSvg + macdSvg;
   }
 
   window.GATE_ADD = checkAdd;
@@ -285,7 +336,17 @@
     if ([4, 8, 10].includes(m)) items.push({ k: 'check', t: m + ' 月是财报截止月：个股不加新仓，留意持仓个股的预约披露日' });
     if (!items.length) items.push({ k: 'act', t: '没有需要回答的问题 —— 持仓在约束内，也没有可执行的加仓' });
     const icon = { act: '▶', wait: '■', check: '？', warn: '⚠' };
+    // 口径说明：这一节的百分比分母是**账户总资产**（用户 2026-10-16 明确要求，
+    // 不是持仓市值）；顺带把本机持仓快照的时间打出来，免得看的是旧数据还不知道。
+    const snapAt = (() => { try { return localStorage.getItem('astock.holdings.appliedAt') || ''; } catch { return ''; } })();
+    const snapTxt = snapAt ? snapAt.slice(0, 16).replace('T', ' ') : '未知';
+    const basisHtml = acct?.assets
+      ? '<div class="dim" style="margin-top:8px;font-size:11.5px">口径：分母 = <b>账户总资产</b> ' + (acct.assets / 10000).toFixed(2) +
+        ' 万（不是持仓市值）· 持仓快照 ' + esc(snapTxt) + ' · 每次打开页面自动跟最新快照对齐。</div>'
+      : '<div class="chkbox warnbox" style="margin-top:8px">⚠️ 还没同步账户总资产 —— 现在只能用<b>持仓市值</b>当分母，比例会系统性偏大。' +
+        '到 ④ 点「同步持仓」把账户总览一起拉下来。</div>';
     box.innerHTML = items.map((c) => '<div class="chk ' + c.k + '"><span class="chki">' + (icon[c.k] || '·') + '</span><span>' + esc(c.t) + '</span></div>').join('') +
+      basisHtml +
       '<div class="dim" style="margin-top:8px;font-size:11.5px">这一节只列<b>你的持仓</b>里需要回答的问题。大盘估值那部分在 ③。</div>';
   }
 
