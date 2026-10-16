@@ -927,7 +927,17 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
           const r = window.GATE_ADD(name, tranche, holdings, acct, lg);
           const rows = window.GATE_PRICES(name, holdings, acct, lg);
           const chart = window.GATE_CHART ? window.GATE_CHART(name) : '';
+          // 见底四件事：每件事都标出"看哪个对象"——K线收盘价 / MACD柱 / DIF·DEA，避免看错线
+          const st = window.GATE_STEPS ? window.GATE_STEPS(name) : null;
+          const stepsHtml = st
+            ? '<div class="hpprice"><b>见底四件事</b>（依次出现才算见底；只有第 ④ 项放行加仓）</div>' +
+              st.steps.map((s, i) =>
+                '<div class="hppr"><span>' + (i + 1) + '. ' + esc(s.key) +
+                '<br><span class="dim" style="font-size:10.5px">看 ' + esc(s.on) + ' · ' + esc(s.value) + '</span></span>' +
+                '<b style="color:' + (s.ok ? '#4fbf8f' : '#7b8698') + '">' + (s.ok ? '✓' : '○') + '</b></div>').join('')
+            : '';
           d.innerHTML = chart +
+            stepsHtml +
             '<div class="hpadv ' + (r.ok ? 'ok' : 'no') + '">' + (r.ok ? '✓ 允许加仓' : '✗ 不允许加仓') +
             (r.blocked.length ? '：' + r.blocked.map(esc).join('；') : '') + '</div>' +
             '<div class="hpprice"><b>计划操作价格</b>（由你定的规则推导，不是预测）</div>' +
@@ -1247,8 +1257,14 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
       }
     }
 
+    // ---- 价格确认：视频「见底四件事」的最后一步，用户定为放行的必要条件 ----
+    // 前三条（绿柱变短／底背离／金叉柱翻红）只是黄灯，不拦；只有"收盘站回前一个反弹高点"才放行。
+    const fs = fourSteps(name);
+    if (fs && !fs.steps[3].ok) blocked.push('价格未确认：' + fs.steps[3].value);
+
     const ok = blocked.length === 0 && soft.length === 0;
-    return { ok, blocked: [...blocked, ...soft], info: { level: g?.level ?? '—', needDays: g?.needDays, needGap: g?.needGap, usedTranches, mv, A, thisV, secV, sec } };
+    const steps = fourSteps(name);
+    return { ok, blocked: [...blocked, ...soft], steps, info: { level: g?.level ?? '—', needDays: g?.needDays, needGap: g?.needGap, usedTranches, mv, A, thisV, secV, sec } };
   }
 
   /** 把一条拒绝理由压成一个短标签（人眼扫的是颜色+短语，不是整句） */
@@ -1418,7 +1434,7 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     const n = closes.length;
     const { highs, lows } = swings(closes, DIV.K);
     const build = (idx, kind) => ({
-      kind,
+      kind, idxA: idx[0], idxB: idx[1],
       dateA: S[idx[0]][0], priceA: +closes[idx[0]].toFixed(3), difA: +dif[idx[0]].toFixed(4),
       dateB: S[idx[1]][0], priceB: +closes[idx[1]].toFixed(3), difB: +dif[idx[1]].toFixed(4),
       gapBars: idx[1] - idx[0], ageBars: n - 1 - idx[1],
@@ -1438,6 +1454,76 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     const bottom = lastPair(lows, (a, b) => closes[b] < closes[a] * (1 - DIV.PRICE_EPS) && dif[b] > dif[a]);
     if (bottom) return { type: '底', ...bottom };
     return { type: null, why: '最近两个同类摆动点没有出现"价格与速度不同步"' };
+  }
+
+  /**
+   * 视频的「见底四件事」（半导体材料实战那段）—— **每件事分别看哪个对象，必须钉死**，
+   * 否则同一个词会在 K线与 MACD线之间漂移，算出来的状态没人能复核：
+   *   ① 绿柱开始变短   → 看 **MACD 柱**：绿柱的**绝对值**在缩短（下跌在减速）；柱已翻红也算过
+   *   ② 底背离         → 看**两个主体**：K线收盘的低点更低，且**同一天**的 DIF 低点更高
+   *   ③ 金叉、柱子翻红 → 看 **MACD 两条线**：DIF 上穿 DEA（不是均线、不是K线）
+   *   ④ 收盘站回前一个反弹高点 → **只看 K 线收盘价**，与前一个"已确认"的摆动高点比
+   * 只有 ④ 是放行的必要条件（用户 2026-10-16 定的）；①②③ 是黄灯式的进度提示。
+   */
+  function fourSteps(name) {
+    const S = window.STOCKS?.[name];
+    if (!S || S.length < 60) return null;
+    const { closes, dif, dea, hist } = macdOf(S);
+    const n = closes.length;
+    const last = closes[n - 1];
+    const f3 = (v) => (v >= 0 ? '+' : '') + v.toFixed(3);
+
+    // ① MACD 柱：绿柱连续缩短（比的是 |柱|）。柱若已翻红，这一步视为已过。
+    let shrink = 0;
+    for (let i = n - 1; i > 0 && hist[i] < 0; i--) {
+      if (Math.abs(hist[i]) < Math.abs(hist[i - 1])) shrink++;
+      else break;
+    }
+    const green = hist[n - 1] < 0;
+    const step1 = {
+      key: '绿柱开始变短', on: 'MACD柱',
+      ok: !green || shrink >= 2,
+      value: green ? `绿柱已连续 ${shrink} 根缩短（|柱| ${Math.abs(hist[n - 1]).toFixed(3)}）` : `柱子已翻红（${f3(hist[n - 1])}）`,
+    };
+
+    // ② 底背离：K线低点更低 + 同日 DIF 更高
+    const d = divergence(name);
+    const step2 = {
+      key: '底背离', on: 'K线低点 + 同日DIF',
+      ok: d.type === '底',
+      value: d.type === '底'
+        ? `K线 ${d.priceA} → ${d.priceB}（更低），同日 DIF ${d.difA} → ${d.difB}（更高）`
+        : (d.type === '顶' ? '当前是顶背离（反方向），不是见底信号' : '未出现底背离'),
+    };
+
+    // ③ 金叉、柱子翻红：DIF 上穿 DEA
+    let crossAt = -1;
+    for (let i = n - 1; i > 0; i--) if (dif[i] > dea[i] && dif[i - 1] <= dea[i - 1]) { crossAt = i; break; }
+    const red = dif[n - 1] > dea[n - 1];
+    const ago = crossAt < 0 ? null : n - 1 - crossAt;
+    const step3 = {
+      key: '金叉、柱翻红', on: 'DIF/DEA',
+      ok: red,
+      value: red ? (ago == null ? '柱为红（DIF 在 DEA 上方）' : `${ago} 根前金叉，柱已翻红`) : '柱为绿（DIF 在 DEA 下方），还没金叉',
+    };
+
+    // ④ 价格确认：只看收盘价 vs 前一个已确认的反弹高点
+    const { highs } = swings(closes, DIV.K);
+    let prevHigh = null, prevDate = null;
+    for (let i = highs.length - 1; i >= 0; i--) {
+      const h = highs[i];
+      if (n - 1 - h < DIV.K + 1) continue; // 右边还没走够根数，不算"已确认"的前高
+      prevHigh = closes[h]; prevDate = S[h][0]; break;
+    }
+    const step4 = {
+      key: '收盘站回前一个反弹高点', on: 'K线收盘价',
+      ok: prevHigh != null && last >= prevHigh,
+      value: prevHigh == null ? '找不到可用的前一个反弹高点'
+        : `收盘 ${last} 元 ${last >= prevHigh ? '≥' : '<'} 前高 ${prevHigh.toFixed(3)}（${prevDate}）`,
+    };
+
+    const steps = [step1, step2, step3, step4];
+    return { steps, n: steps.filter((s) => s.ok).length, ok: steps.every((s) => s.ok) };
   }
 
   /**
@@ -1467,12 +1553,26 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     const up = lastC >= (lastMA20 ?? lastC);
     // x 轴只标首末日期，避免手机上糊成一团
     const d0 = S[0][0].slice(5), d1 = S.at(-1)[0].slice(5);
+    // 「前低」画成一条虚线（视频里的做法）：主体是 **K线收盘价** —— 收盘跌破它 ＋ 死叉才是转弱确认
+    const lowsIdx = swings(closes, DIV.K).lows;
+    let prevLow = null, prevLowDate = null;
+    for (let i = lowsIdx.length - 1; i >= 0; i--) {
+      const k = lowsIdx[i];
+      if (S.length - 1 - k < DIV.K + 1) continue;
+      prevLow = closes[k]; prevLowDate = S[k][0]; break;
+    }
+    const lowLine = prevLow == null ? '' :
+      '<line x1="' + P.l + '" y1="' + Y(prevLow).toFixed(1) + '" x2="' + (W - P.r) + '" y2="' + Y(prevLow).toFixed(1) +
+      '" stroke="rgba(224,128,58,.55)" stroke-width="1" stroke-dasharray="4 3"/>' +
+      '<text x="' + (P.l + 3) + '" y="' + (Y(prevLow) - 3).toFixed(1) + '" fill="rgba(224,128,58,.9)" font-size="9">前低 ' +
+      prevLow.toFixed(2) + '（' + prevLowDate.slice(5) + '）</text>';
     const priceSvg = '<svg class="hpsvg" viewBox="0 0 ' + W + ' ' + Hh + '" preserveAspectRatio="none">' +
       '<path d="' + path(closes) + '" fill="none" stroke="' + (up ? '#e08a6a' : '#4fbf8f') + '" stroke-width="1.4"/>' +
       '<path d="' + path(m5) + '" fill="none" stroke="rgba(150,160,180,.5)" stroke-width="1" stroke-dasharray="3 2"/>' +
       // MA20 是企稳判定的那条线，画粗、高亮
       '<path d="' + path(m20) + '" fill="none" stroke="#5b8def" stroke-width="1.8"/>' +
       '<path d="' + path(m60) + '" fill="none" stroke="rgba(224,128,58,.75)" stroke-width="1.2"/>' +
+      lowLine +
       '<text x="' + P.l + '" y="' + (Hh - 4) + '" fill="#7b8698" font-size="9">' + d0 + '</text>' +
       '<text x="' + (W - P.r) + '" y="' + (Hh - 4) + '" fill="#7b8698" font-size="9" text-anchor="end">' + d1 + '</text>' +
       '</svg>' +
@@ -1511,6 +1611,14 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     };
     const bw = Math.max(1, ((W - MP.l - MP.r) / Math.max(1, S.length - 1)) * 0.62);
     const zeroY = MY(0);
+    // 背离的两个 DIF 点直接标出来并连线（视频里的画法）：主体是 **DIF**，且取的是价格摆动点当天的值
+    const dv = divergence(name);
+    const dvMark = dv.type ? (
+      '<circle cx="' + X(dv.idxA).toFixed(1) + '" cy="' + MY(dv.difA).toFixed(1) + '" r="3" fill="#e0a23a"/>' +
+      '<circle cx="' + X(dv.idxB).toFixed(1) + '" cy="' + MY(dv.difB).toFixed(1) + '" r="3" fill="#e0a23a"/>' +
+      '<line x1="' + X(dv.idxA).toFixed(1) + '" y1="' + MY(dv.difA).toFixed(1) + '" x2="' + X(dv.idxB).toFixed(1) +
+      '" y2="' + MY(dv.difB).toFixed(1) + '" stroke="rgba(224,162,58,.85)" stroke-width="1" stroke-dasharray="3 2"/>'
+    ) : '';
     const bars = hist.map((v, i) => {
       const y1 = MY(v);
       const top = Math.min(zeroY, y1), h = Math.max(0.6, Math.abs(y1 - zeroY));
@@ -1522,6 +1630,7 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
       bars +
       '<path d="' + mpath(dif) + '" fill="none" stroke="#5b8def" stroke-width="1.4"/>' +
       '<path d="' + mpath(dea) + '" fill="none" stroke="rgba(224,128,58,.9)" stroke-width="1.2"/>' +
+      dvMark +
       '</svg>' +
       '<div class="hplegend">' +
       '<span><i style="background:#5b8def"></i>DIF ' + dif.at(-1).toFixed(3) + '</span>' +
@@ -1561,6 +1670,7 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   window.GATE_PRICES = planPrices;
   window.GATE_CHART = renderChart;
   window.GATE_DIVERGENCE = divergence;
+  window.GATE_STEPS = fourSteps;
   /**
    * ② 必须逐条回答 —— 改成**只讲你的持仓**。
    * ⚠️ 原来这节由 plan.js 用服务端数据渲染，内容是「价值陷阱 / 价格在高位但估值不高 / 12–1 月小盘弱」
@@ -1619,6 +1729,19 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
       if (tops.length) items.push({ k: 'warn', t: 'MACD 顶背离 ' + tops.join('、') + ' —— 价格在涨、速度没跟上' });
       if (bots.length) items.push({ k: 'check', t: 'MACD 底背离 ' + bots.join('、') + ' —— 价格在跌、跌速在放慢' });
     }
+    // ⑦ 见底四件事（视频）：只报进度；**放行的只有第 ④ 项（收盘站回前高，看 K 线收盘价）**
+    if (typeof fourSteps === 'function') {
+      const fsr = holdings.map((h) => ({ name: h.name, s: fourSteps(h.name) })).filter((r) => r.s);
+      if (fsr.length) {
+        const done = fsr.filter((r) => r.s.steps[3].ok);
+        items.push({
+          k: done.length ? 'act' : 'wait',
+          t: '见底四件事：' + fsr.map((r) => r.name + ' ' + r.s.n + '/4').join('、') +
+            (done.length ? '　已过第④项（收盘站回前高）：' + done.map((r) => r.name).join('、')
+                         : '　还没有一只过第④项（收盘站回前高）—— 按新规则，一只都不放行'),
+        });
+      }
+    }
     if (!items.length) items.push({ k: 'act', t: '没有需要回答的问题 —— 持仓在约束内，也没有可执行的加仓' });
     const icon = { act: '▶', wait: '■', check: '？', warn: '⚠' };
     // 口径说明：这一节的百分比分母是**账户总资产**（用户 2026-10-16 明确要求，
@@ -1642,5 +1765,5 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   document.addEventListener('astock:changed', () => { renderVerdict(); renderChecklist(); render(); });
 })();
 </script>
-<script>window.PLAN_BUILD = "2026-10-16T12:14:11.674Z";</script>
+<script>window.PLAN_BUILD = "2026-10-16T12:44:32.886Z";</script>
 </body></html>
