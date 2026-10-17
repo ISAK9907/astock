@@ -108,6 +108,9 @@ details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
 .hpbar{height:3px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
 .hpbar i{display:block;height:100%;background:#5b8def}
 .hphint{font-size:10.5px;color:var(--dim);margin-top:6px}
+/* 急跌缩量警示（视频《不破不立》：跌停卖不出 ≠ 地量见底） */
+.hpwarn{margin-top:6px;padding:4px 8px;border-radius:5px;background:rgba(224,128,58,.12);
+  border-left:3px solid #e0803a;color:#f0a860;font-size:11px;line-height:1.4}
 .hpdetail{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
 .hpadv{font-size:12.5px;line-height:1.6;padding:7px 9px;border-radius:7px;margin-bottom:8px}
 .hpadv.ok{background:rgba(47,158,107,.12);border-left:3px solid #2f9e6b}
@@ -917,6 +920,13 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
             `<span style="color:${col}">${pp == null ? '' : (pp >= 0 ? '+' : '') + pp.toFixed(2) + '%'}</span>` +
             `<span class="dim">占账户 ${shareAcct == null ? '—（未同步）' : shareAcct.toFixed(1) + '%'} · 占持仓 ${shareMv.toFixed(1)}%</span></div>` +
             `<div class="hpbar"><i style="width:${Math.min(100, shareMain)}%"></i></div>` +
+            // 急跌缩量直接写在卡片上：不用展开就能看到（视频点名的陷阱）
+            (() => {
+              const S = window.STOCKS?.[r.name];
+              const V = S && window.GATE_VOL ? window.GATE_VOL(S) : null;
+              return V && V.fallingShrink
+                ? `<div class="hpwarn">⚠ 连跌 ${V.downDays} 日 + 缩量：可能跌停卖不出（不是地量见底）</div>` : '';
+            })() +
             // 点开看：这只的建议 + 可执行价格（用户要的"滑动可以查看持仓建议，计划操作价格"）
             `<div class="hpdetail" data-detail="${esc(r.name ?? '')}" hidden></div>` +
             `<div class="hphint">点开看曲线·MACD·建议与计划操作价格 ▾</div></div>`;
@@ -1616,13 +1626,18 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
     };
 
     // ② 缩到地量（量能）
+    // ⚠️ 视频原话："但急跌时的缩量要另看" —— 连跌+缩量往往是**跌停卖不出去**，
+    //    不是"想卖的人变少了"。这时候②不能算达成，否则会把"跌停"读成"地量见底"。
     const step2 = {
       key: '缩到地量', on: '成交量（5日均量）',
-      ok: V.hasData && V.isLow,
+      ok: V.hasData && V.isLow && !V.fallingShrink,
       value: !V.hasData
         ? '没有成交量数据（stocks.json 是老格式，重跑 node fetch-stocks.mjs）'
         : `5日均量 ${fmtVol(V.v5)}，近一年 ${V.pct}% 分位（地量线 ${fmtVol(V.p10)}）`
-          + (V.isHigh ? '【天量】' : (V.isLow ? '【地量】' : '')),
+          + (V.isHigh ? '【天量】' : (V.isLow ? '【地量】' : ''))
+          + (V.fallingShrink
+              ? `　⚠ 连跌 ${V.downDays} 日且缩量：可能是跌停卖不出，不是卖盘枯竭（视频：急跌缩量要另看）`
+              : ''),
     };
 
     // ③ 底背离：只有"收盘跌破前低"时才需要
@@ -1948,6 +1963,17 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
         });
       }
     }
+    // ⑦-b 急跌缩量：单独报一条（视频专门提醒过的陷阱）
+    if (typeof volStats === 'function') {
+      const fs2 = holdings
+        .map((h) => ({ name: h.name, v: window.STOCKS?.[h.name] ? volStats(window.STOCKS[h.name]) : null }))
+        .filter((r) => r.v && r.v.fallingShrink);
+      if (fs2.length) {
+        items.push({ k: 'warn', t: '急跌缩量（不是地量见底）：' +
+          fs2.map((r) => r.name + '（连跌 ' + r.v.downDays + ' 日且量缩）').join('、') +
+          ' —— 视频口径：这种多是跌停卖不出去，止跌②不算达成' });
+      }
+    }
     // ⑧ 景气（人工判断）：视频《不破不立》的大前提 —— 景气还在，跌破前低多半只是回撤；
     //    景气走完了，新低之后还有新低。机器判不了（原话是"看未来的现金流还有多少没被价格算进去"），
     //    所以只提示，**不参与放行/否决**，等用户在卡片里标。
@@ -1986,5 +2012,5 @@ code{background:var(--line);padding:1px 4px;border-radius:3px;font-size:11px}
   document.addEventListener('astock:changed', () => { renderVerdict(); renderChecklist(); render(); });
 })();
 </script>
-<script>window.PLAN_BUILD = "2026-10-17T02:39:43.249Z";</script>
+<script>window.PLAN_BUILD = "2026-10-17T02:48:31.687Z";</script>
 </body></html>
