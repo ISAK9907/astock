@@ -76,13 +76,13 @@
       }
     }
 
-    // ---- 价格确认：视频「见底四件事」的最后一步，用户定为放行的必要条件 ----
+    // ---- 价格确认：视频《不破不立》「止跌五件事」的最后一步（且要放量），用户定为放行的必要条件 ----
     // 前三条（绿柱变短／底背离／金叉柱翻红）只是黄灯，不拦；只有"收盘站回前一个反弹高点"才放行。
-    const fs = fourSteps(name);
-    if (fs && !fs.steps[3].ok) blocked.push('价格未确认：' + fs.steps[3].value);
+    const fs = fiveSteps(name);
+    if (fs && !fs.steps[4].ok) blocked.push('价格未确认：' + fs.steps[4].value);
 
     const ok = blocked.length === 0 && soft.length === 0;
-    const steps = fourSteps(name);
+    const steps = fiveSteps(name);
     return { ok, blocked: [...blocked, ...soft], steps, info: { level: g?.level ?? '—', needDays: g?.needDays, needGap: g?.needGap, usedTranches, mv, A, thisV, secV, sec } };
   }
 
@@ -287,21 +287,92 @@
     return { type: null, why: '最近两个同类摆动点没有出现"价格与速度不同步"' };
   }
 
+  // ==================== 量价（视频《不破不立》） ====================
+  // 口径（用户 2026-10-17 确认）：
+  //   · 地量 = **5日均量** ≤ 近一年（250 根）5日均量分布的 10% 分位
+  //   · 天量 = 同上 ≥ 90% 分位
+  //   · 放量 = 当日量 ≥ 近 20 日均量的 1.5 倍
+  //   · 跌破前低按**收盘价**算（视频原话："按收盘算还不算跌破"）
+  // 为什么用 5 日均量而不是单日量：视频里的证据都是"日均/月均成交额"，
+  // 单日量有个别异常放量，会把"地量"判得太乐观。
+  const VOL = { YEAR: 250, LOW_PCT: 0.10, HIGH_PCT: 0.90, N: 5, HOT: 1.5, MA: 20 };
+
+  function mean(a, from, to) {          // [from, to) 的均值
+    let s = 0, k = 0;
+    for (let i = from; i < to; i++) { s += a[i]; k++; }
+    return k ? s / k : null;
+  }
+
+  /** 量能体检：地量/天量、量价四组合、急跌缩量（可能跌停卖不出） */
+  function volStats(S) {
+    const c = S.map((x) => x[1]);
+    const v = S.map((x) => x[2] || 0);
+    const n = c.length;
+    const v5 = v.map((_, i) => (i >= 4 ? mean(v, i - 4, i + 1) : null));      // 5日均量
+    const hist = v5.slice(-VOL.YEAR).filter((x) => x != null).sort((a, b) => a - b);
+    const q = (p) => (hist.length ? hist[Math.min(hist.length - 1, Math.floor(hist.length * p))] : null);
+    const p10 = q(VOL.LOW_PCT), p90 = q(VOL.HIGH_PCT);
+    const v5now = v5[n - 1];
+    const pct = (hist.length && v5now != null)
+      ? Math.round(100 * hist.filter((x) => x <= v5now).length / hist.length) : null;
+    const ma20v = n >= VOL.MA ? mean(v, n - VOL.MA, n) : null;
+
+    // 量价四组合（看近 5 日）：价格 5 日涨跌 × 5日均量相对"再前 5 日"
+    const p5 = n >= 6 ? (c[n - 1] / c[n - 6] - 1) : null;
+    const v5prev = (n >= 10 && v5[n - 6] != null) ? v5[n - 6] : null;
+    const dv = (v5now != null && v5prev) ? (v5now / v5prev - 1) : null;
+    let combo = null;
+    if (p5 != null && dv != null) {
+      const up = p5 >= 0, add = dv >= 0.05, cut = dv <= -0.05;
+      combo = up ? (add ? '价涨量增' : (cut ? '价涨量缩' : '价涨量平'))
+                 : (add ? '价跌量增' : (cut ? '价跌量缩' : '价跌量平'));
+    }
+
+    // 急跌缩量：连跌 ≥3 日且量连续缩小 → 可能是**跌停卖不出去**，不是"缩量见底"
+    let downDays = 0;
+    for (let i = n - 1; i > 0 && c[i] < c[i - 1]; i--) downDays++;
+    let shrinkDays = 0;
+    for (let i = n - 1; i > 0 && v[i] < v[i - 1]; i--) shrinkDays++;
+    const fallingShrink = downDays >= 3 && shrinkDays >= 2;
+
+    // ⚠️ 护栏：stocks.json 若还是老格式（日线里没有 volume），所有量都是 0 ——
+    //    这时 p10=0、v5=0，"0 ≤ 0" 会把「缩到地量」误判成已达成。必须显式说"没有数据"。
+    const hasData = v.some((x) => x > 0) && hist.length > 0 && p10 != null && p10 > 0;
+    return {
+      hasData, last: v[n - 1], v5: v5now, ma20: ma20v, p10, p90, pct, combo,
+      fallingShrink, downDays,
+      isLow: hasData && v5now != null && v5now <= p10,
+      isHigh: hasData && v5now != null && v5now >= p90,
+      hot: !!(ma20v && v[n - 1] >= VOL.HOT * ma20v),
+      volRatio: ma20v ? (v[n - 1] / ma20v) : null,
+    };
+  }
+
+  const fmtVol = (x) => (x == null ? '—'
+    : x >= 1e8 ? (x / 1e8).toFixed(2) + '亿'
+    : x >= 1e4 ? (x / 1e4).toFixed(0) + '万'
+    : Math.round(x) + '');
+
   /**
-   * 视频的「见底四件事」（半导体材料实战那段）—— **每件事分别看哪个对象，必须钉死**，
-   * 否则同一个词会在 K线与 MACD线之间漂移，算出来的状态没人能复核：
-   *   ① 绿柱开始变短   → 看 **MACD 柱**：绿柱的**绝对值**在缩短（下跌在减速）；柱已翻红也算过
-   *   ② 底背离         → 看**两个主体**：K线收盘的低点更低，且**同一天**的 DIF 低点更高
-   *   ③ 金叉、柱子翻红 → 看 **MACD 两条线**：DIF 上穿 DEA（不是均线、不是K线）
-   *   ④ 收盘站回前一个反弹高点 → **只看 K 线收盘价**，与前一个"已确认"的摆动高点比
-   * 只有 ④ 是放行的必要条件（用户 2026-10-16 定的）；①②③ 是黄灯式的进度提示。
+   * 《不破不立》的「止跌五件事」—— 每件事看哪个对象必须钉死，否则同一个词会在
+   * K线 / MACD线 / 量柱之间漂移，算出来没人能复核：
+   *   ① 绿柱开始变短   → **MACD 柱**：绿柱的绝对值在缩短（下跌在减速）；柱已翻红也算过
+   *   ② 缩到地量       → **成交量**：5日均量 ≤ 近一年 10% 分位（跌到没人卖）
+   *   ③ 底背离         → **两个主体**：K线收盘低点更低，且**同一天**的 DIF 低点更高
+   *                      （视频口径：**只有跌破前低时**才需要这一条；没跌破就不用管）
+   *   ④ 金叉、柱翻红   → **MACD 两条线**：DIF 上穿 DEA
+   *   ⑤ 放量站回前高   → **K线收盘价 + 成交量**：收盘站回前一个反弹高点，
+   *                      且"站回那天"的量 ≥ 近20日均量 × 1.5（放量才算数）
+   * 只有 ⑤ 是"现在能不能加仓"的必要条件（用户 2026-10-16 定的；⑤ 里含放量，用户 2026-10-17 确认）。
+   * ①②③④ 是黄灯式的进度提示，不拦。
    */
-  function fourSteps(name) {
+  function fiveSteps(name) {
     const S = window.STOCKS?.[name];
     if (!S || S.length < 60) return null;
     const { closes, dif, dea, hist } = macdOf(S);
     const n = closes.length;
     const last = closes[n - 1];
+    const V = volStats(S);
     const f3 = (v) => (v >= 0 ? '+' : '') + v.toFixed(3);
 
     // ① MACD 柱：绿柱连续缩短（比的是 |柱|）。柱若已翻红，这一步视为已过。
@@ -314,47 +385,96 @@
     const step1 = {
       key: '绿柱开始变短', on: 'MACD柱',
       ok: !green || shrink >= 2,
-      value: green ? `绿柱已连续 ${shrink} 根缩短（|柱| ${Math.abs(hist[n - 1]).toFixed(3)}）` : `柱子已翻红（${f3(hist[n - 1])}）`,
+      value: green
+        ? (shrink >= 1
+            ? `绿柱已连续 ${shrink} 根缩短（|柱| ${Math.abs(hist[n - 1]).toFixed(3)}）`
+            : `绿柱还在变长（|柱| ${Math.abs(hist[n - 1]).toFixed(3)}），还没开始缩`)
+        : `柱子已翻红（${f3(hist[n - 1])}）`,
     };
 
-    // ② 底背离：K线低点更低 + 同日 DIF 更高
-    const d = divergence(name);
+    // ② 缩到地量（量能）
     const step2 = {
-      key: '底背离', on: 'K线低点 + 同日DIF',
-      ok: d.type === '底',
-      value: d.type === '底'
-        ? `K线 ${d.priceA} → ${d.priceB}（更低），同日 DIF ${d.difA} → ${d.difB}（更高）`
-        : (d.type === '顶' ? '当前是顶背离（反方向），不是见底信号' : '未出现底背离'),
+      key: '缩到地量', on: '成交量（5日均量）',
+      ok: V.hasData && V.isLow,
+      value: !V.hasData
+        ? '没有成交量数据（stocks.json 是老格式，重跑 node fetch-stocks.mjs）'
+        : `5日均量 ${fmtVol(V.v5)}，近一年 ${V.pct}% 分位（地量线 ${fmtVol(V.p10)}）`
+          + (V.isHigh ? '【天量】' : (V.isLow ? '【地量】' : '')),
     };
 
-    // ③ 金叉、柱子翻红：DIF 上穿 DEA
+    // ③ 底背离：只有"收盘跌破前低"时才需要
+    const lowsIdx = swings(closes, DIV.K).lows;
+    let prevLow = null, prevLowDate = null;
+    for (let i = lowsIdx.length - 1; i >= 0; i--) {
+      const k = lowsIdx[i];
+      if (n - 1 - k < DIV.K + 1) continue;
+      prevLow = closes[k]; prevLowDate = S[k][0]; break;
+    }
+    const brokeLow = prevLow != null && last < prevLow;
+    const d = divergence(name);
+    const step3 = {
+      key: '底背离（跌破前低时必需）', on: 'K线低点 + 同日DIF',
+      ok: !brokeLow || d.type === '底',
+      value: !brokeLow
+        ? `收盘 ${last} 还没跌破前低 ${prevLow == null ? '—' : prevLow.toFixed(3)}（${prevLowDate || '—'}），不需要`
+        : (d.type === '底'
+            ? `已跌破前低，且出现底背离：K线 ${d.priceA}→${d.priceB} 更低、同日 DIF ${d.difA}→${d.difB} 更高`
+            : '已跌破前低，但还没出现底背离'),
+    };
+
+    // ④ 金叉、柱子翻红
     let crossAt = -1;
     for (let i = n - 1; i > 0; i--) if (dif[i] > dea[i] && dif[i - 1] <= dea[i - 1]) { crossAt = i; break; }
     const red = dif[n - 1] > dea[n - 1];
     const ago = crossAt < 0 ? null : n - 1 - crossAt;
-    const step3 = {
+    const step4 = {
       key: '金叉、柱翻红', on: 'DIF/DEA',
       ok: red,
       value: red ? (ago == null ? '柱为红（DIF 在 DEA 上方）' : `${ago} 根前金叉，柱已翻红`) : '柱为绿（DIF 在 DEA 下方），还没金叉',
     };
 
-    // ④ 价格确认：只看收盘价 vs 前一个已确认的反弹高点
+    // ⑤ 放量站回前一个反弹高点：收盘价 + 成交量
     const { highs } = swings(closes, DIV.K);
     let prevHigh = null, prevDate = null;
     for (let i = highs.length - 1; i >= 0; i--) {
       const h = highs[i];
-      if (n - 1 - h < DIV.K + 1) continue; // 右边还没走够根数，不算"已确认"的前高
+      if (n - 1 - h < DIV.K + 1) continue;
       prevHigh = closes[h]; prevDate = S[h][0]; break;
     }
-    const step4 = {
-      key: '收盘站回前一个反弹高点', on: 'K线收盘价',
-      ok: prevHigh != null && last >= prevHigh,
-      value: prevHigh == null ? '找不到可用的前一个反弹高点'
-        : `收盘 ${last} 元 ${last >= prevHigh ? '≥' : '<'} 前高 ${prevHigh.toFixed(3)}（${prevDate}）`,
-    };
+    // ⚠️ 「现在」必须站在前高上方：只看"历史上某天上穿过"会把早就跌回来的票误判成已站回
+    //    （实测融捷 09-22 站回一次、之后跌回来，旧写法仍报"站回"）。
+    let crossIdx = -1;
+    const aboveNow = prevHigh != null && last >= prevHigh;
+    if (aboveNow) {
+      for (let i = n - 1; i > 0; i--) {
+        if (closes[i] >= prevHigh && closes[i - 1] < prevHigh) { crossIdx = i; break; }
+      }
+    }
+    let step5;
+    if (prevHigh == null) {
+      step5 = { key: '放量站回前一个反弹高点', on: 'K线收盘价 + 成交量', ok: false, value: '找不到可用的前一个反弹高点' };
+    } else if (!aboveNow) {
+      step5 = { key: '放量站回前一个反弹高点', on: 'K线收盘价 + 成交量', ok: false,
+                value: `收盘 ${last} 还在前高 ${prevHigh.toFixed(3)}（${prevDate}）下方` };
+    } else if (crossIdx < 0) {
+      step5 = { key: '放量站回前一个反弹高点', on: 'K线收盘价 + 成交量', ok: false,
+                value: `收盘 ${last} 已在前高 ${prevHigh.toFixed(3)} 上方，但找不到上穿那天` };
+    } else {
+      const ma20v = n >= VOL.MA ? mean(S.map((x) => x[2] || 0), crossIdx - VOL.MA + 1, crossIdx + 1) : null;
+      const vCross = S[crossIdx][2] || 0;
+      const ratio = ma20v ? vCross / ma20v : null;
+      const okVol = ratio != null && ratio >= VOL.HOT;
+      step5 = {
+        key: '放量站回前一个反弹高点', on: 'K线收盘价 + 成交量',
+        ok: okVol,
+        value: `${S[crossIdx][0]} 收 ${closes[crossIdx].toFixed(3)} 站回前高 ${prevHigh.toFixed(3)}，`
+          + `当天量 ${fmtVol(vCross)} = 20日均量 ×${ratio == null ? '—' : ratio.toFixed(2)}`
+          + (okVol ? '（放量✓）' : `（不够放量，要 ≥×${VOL.HOT}）`),
+      };
+    }
 
-    const steps = [step1, step2, step3, step4];
-    return { steps, n: steps.filter((s) => s.ok).length, ok: steps.every((s) => s.ok) };
+    const steps = [step1, step2, step3, step4, step5];
+    return { steps, n: steps.filter((s) => s.ok).length, ok: steps.every((s) => s.ok), vol: V };
   }
 
   /**
@@ -413,6 +533,37 @@
       '<span><i style="background:rgba(224,128,58,.75)"></i>MA60 ' + (lastMA60 == null ? '—' : lastMA60.toFixed(2)) + '</span>' +
       '<span><i style="background:rgba(150,160,180,.5)"></i>MA5</span>' +
       '</div>';
+
+    // ---------------- 成交量（视频《不破不立》：量价） ----------------
+    // 只在上面价格图下面加一层量柱：收涨红、收跌绿，虚线是「地量线」
+    // （= 近一年 5日均量的 10% 分位，和止跌五件事②同一口径）。
+    const vol = S.map((x) => x[2] || 0);
+    const vs = volStats(S);
+    const VH = 64, VP = { t: 4, r: 6, b: 6, l: 6 };
+    const vmax = Math.max(...vol) || 1;
+    const VY = (v) => VP.t + (1 - v / vmax) * (VH - VP.t - VP.b);
+    const vw = Math.max(1, ((W - VP.l - VP.r) / Math.max(1, S.length - 1)) * 0.62);
+    const vbars = vol.map((v, i) => {
+      const up = i > 0 ? S[i][1] >= S[i - 1][1] : true;
+      const y0 = VY(0), y1 = VY(v);
+      return '<rect x="' + (X(i) - vw / 2).toFixed(1) + '" y="' + Math.min(y0, y1).toFixed(1) +
+        '" width="' + vw.toFixed(2) + '" height="' + Math.max(0.6, Math.abs(y1 - y0)).toFixed(1) +
+        '" fill="' + (up ? 'rgba(224,106,106,.5)' : 'rgba(79,191,143,.45)') + '"/>';
+    }).join('');
+    const lowY = vs.p10 != null ? VY(vs.p10) : null;
+    const volSvg = '<svg class="hpsvg" viewBox="0 0 ' + W + ' ' + VH + '" preserveAspectRatio="none" style="margin-top:1px">' +
+      (lowY != null ? '<line x1="' + VP.l + '" y1="' + lowY.toFixed(1) + '" x2="' + (W - VP.r) + '" y2="' + lowY.toFixed(1) +
+        '" stroke="rgba(123,134,152,.85)" stroke-width="1" stroke-dasharray="4 3"/>' : '') +
+      vbars + '</svg>';
+    const volLegend = '<div class="hplegend">' +
+      '<span><i style="background:rgba(224,106,106,.5)"></i>量（收涨）</span>' +
+      '<span><i style="background:rgba(79,191,143,.45)"></i>量（收跌）</span>' +
+      '<span class="dim">虚线 = 地量线（5日均量10%分位 ' + fmtVol(vs.p10) + '）</span>' +
+      '</div>' +
+      (vs.combo ? '<div class="hplegend"><span><i style="background:#5b8def"></i>量价：' + vs.combo +
+        '（5日均量 ' + (vs.pct == null ? '—' : vs.pct + '% 分位') + '）</span>' +
+        (vs.fallingShrink ? '<span style="color:#e0803a">⚠ 连跌 ' + vs.downDays +
+          ' 日且缩量 —— 可能是跌停卖不出，不是缩量见底</span>' : '') + '</div>' : '');
 
     // ---------------- MACD（12,26,9） ----------------
     // 用户 2026-10-16 要求：卡片点开后除了日K曲线，再加 MACD。
@@ -494,14 +645,15 @@
           ' · 隔 ' + d.gapBars + ' 根 · 距今 ' + d.ageBars + ' 根）</div>';
       })();
 
-    return priceSvg + macdSvg;
+    return priceSvg + volSvg + volLegend + macdSvg;
   }
 
   window.GATE_ADD = checkAdd;
   window.GATE_PRICES = planPrices;
   window.GATE_CHART = renderChart;
   window.GATE_DIVERGENCE = divergence;
-  window.GATE_STEPS = fourSteps;
+  window.GATE_STEPS = fiveSteps;
+  window.GATE_VOL = volStats;
   /**
    * ② 必须逐条回答 —— 改成**只讲你的持仓**。
    * ⚠️ 原来这节由 plan.js 用服务端数据渲染，内容是「价值陷阱 / 价格在高位但估值不高 / 12–1 月小盘弱」
@@ -560,17 +712,32 @@
       if (tops.length) items.push({ k: 'warn', t: 'MACD 顶背离 ' + tops.join('、') + ' —— 价格在涨、速度没跟上' });
       if (bots.length) items.push({ k: 'check', t: 'MACD 底背离 ' + bots.join('、') + ' —— 价格在跌、跌速在放慢' });
     }
-    // ⑦ 见底四件事（视频）：只报进度；**放行的只有第 ④ 项（收盘站回前高，看 K 线收盘价）**
-    if (typeof fourSteps === 'function') {
-      const fsr = holdings.map((h) => ({ name: h.name, s: fourSteps(h.name) })).filter((r) => r.s);
+    // ⑦ 止跌五件事（视频《不破不立》）：只报进度；**放行的只有第 ⑤ 项（放量站回前高）**
+    if (typeof fiveSteps === 'function') {
+      const fsr = holdings.map((h) => ({ name: h.name, s: fiveSteps(h.name) })).filter((r) => r.s);
       if (fsr.length) {
-        const done = fsr.filter((r) => r.s.steps[3].ok);
+        const done = fsr.filter((r) => r.s.steps[4].ok);
         items.push({
           k: done.length ? 'act' : 'wait',
-          t: '见底四件事：' + fsr.map((r) => r.name + ' ' + r.s.n + '/4').join('、') +
-            (done.length ? '　已过第④项（收盘站回前高）：' + done.map((r) => r.name).join('、')
-                         : '　还没有一只过第④项（收盘站回前高）—— 按新规则，一只都不放行'),
+          t: '止跌五件事：' + fsr.map((r) => r.name + ' ' + r.s.n + '/5').join('、') +
+            (done.length ? '　已过第⑤项（放量站回前高）：' + done.map((r) => r.name).join('、')
+                         : '　还没有一只过第⑤项（放量站回前高）—— 按新规则，一只都不放行'),
         });
+      }
+    }
+    // ⑧ 景气（人工判断）：视频《不破不立》的大前提 —— 景气还在，跌破前低多半只是回撤；
+    //    景气走完了，新低之后还有新低。机器判不了（原话是"看未来的现金流还有多少没被价格算进去"），
+    //    所以只提示，**不参与放行/否决**，等用户在卡片里标。
+    if (window.GATE_PROS) {
+      const g = window.GATE_PROS.get;
+      const off = holdings.filter((h) => g(h.name) === 'off').map((h) => h.name);
+      const unk = holdings.filter((h) => g(h.name) === 'unknown').map((h) => h.name);
+      if (off.length) {
+        items.push({ k: 'warn', t: '景气已走完：' + off.join('、') +
+          ' —— 视频口径：景气走完了的新低之后还有新低，别把「跌破前低」当回撤' });
+      } else if (unk.length) {
+        items.push({ k: 'check', t: '景气还没判断：' + unk.join('、') +
+          ' —— 这是"跌破前低是不是只是回撤"的大前提（在卡片里选）' });
       }
     }
     if (!items.length) items.push({ k: 'act', t: '没有需要回答的问题 —— 持仓在约束内，也没有可执行的加仓' });

@@ -359,6 +359,23 @@
 
   // ---------------- 存储 ----------------
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } };
+
+  // ---------------- 景气（人工判断，不做自动判定） ----------------
+  // 视频《不破不立》里"跌破前低之后还涨不涨得回来"的真正分水岭是**景气还在不在**
+  // （原话：看未来的现金流还有多少没被价格算进去）。这件事机器判不了，视频自己也说
+  // "要自己判断"，所以这里只让用户标三档，工具据此给提示 —— **不参与加仓的硬判定**。
+  const PROS_KEY = 'astock.prosperity.v1';
+  const prosperityOf = (name) => {
+    try { return (JSON.parse(localStorage.getItem(PROS_KEY) || '{}'))[name] || 'unknown'; }
+    catch { return 'unknown'; }
+  };
+  const setProsperity = (name, v) => {
+    let m = {};
+    try { m = JSON.parse(localStorage.getItem(PROS_KEY) || '{}'); } catch { /* 忽略 */ }
+    if (v === 'unknown') delete m[name]; else m[name] = v;
+    try { localStorage.setItem(PROS_KEY, JSON.stringify(m)); } catch { /* 忽略 */ }
+    document.dispatchEvent(new CustomEvent('astock:changed'));
+  };
   const save = (rows) => localStorage.setItem(KEY, JSON.stringify(rows));
 
   // ---------------- 渲染 ----------------
@@ -571,23 +588,36 @@
           const r = window.GATE_ADD(name, tranche, holdings, acct, lg);
           const rows = window.GATE_PRICES(name, holdings, acct, lg);
           const chart = window.GATE_CHART ? window.GATE_CHART(name) : '';
-          // 见底四件事：每件事都标出"看哪个对象"——K线收盘价 / MACD柱 / DIF·DEA，避免看错线
+          // 止跌五件事：每件事都标出"看哪个对象"——K线收盘价 / MACD柱 / 成交量 / DIF·DEA，避免看错线
           const st = window.GATE_STEPS ? window.GATE_STEPS(name) : null;
           const stepsHtml = st
-            ? '<div class="hpprice"><b>见底四件事</b>（依次出现才算见底；只有第 ④ 项放行加仓）</div>' +
+            ? '<div class="hpprice"><b>止跌五件事</b>（依次出现才算见底；只有第 ⑤ 项「放量站回前高」放行加仓）</div>' +
               st.steps.map((s, i) =>
                 '<div class="hppr"><span>' + (i + 1) + '. ' + esc(s.key) +
                 '<br><span class="dim" style="font-size:10.5px">看 ' + esc(s.on) + ' · ' + esc(s.value) + '</span></span>' +
                 '<b style="color:' + (s.ok ? '#4fbf8f' : '#7b8698') + '">' + (s.ok ? '✓' : '○') + '</b></div>').join('')
             : '';
+          // 景气（人工判断）：视频的大前提 —— 景气还在，跌破前低多半只是回撤；
+          // 景气走完了，新低之后还有新低。机器判不了，所以只让人标。
+          const PROS = { unknown: '未判断', on: '景气还在', off: '景气已走完' };
+          const cur = prosperityOf(name);
+          const prosHtml =
+            '<div class="hppr"><span><b>景气</b><br><span class="dim" style="font-size:10.5px">人工判断（视频的大前提）</span></span>' +
+            '<select data-pros="' + esc(name) + '" style="max-width:132px">' +
+            Object.entries(PROS).map(([k, lab]) =>
+              '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + lab + '</option>').join('') +
+            '</select></div>';
           d.innerHTML = chart +
-            stepsHtml +
+            stepsHtml + prosHtml +
             '<div class="hpadv ' + (r.ok ? 'ok' : 'no') + '">' + (r.ok ? '✓ 允许加仓' : '✗ 不允许加仓') +
             (r.blocked.length ? '：' + r.blocked.map(esc).join('；') : '') + '</div>' +
             '<div class="hpprice"><b>计划操作价格</b>（由你定的规则推导，不是预测）</div>' +
             rows.map(([k, v, hit]) => '<div class="hppr"><span>' + esc(k) + '</span><b style="color:' + (hit ? '#4fbf8f' : '#e08a3a') + '">' + esc(v) + '</b></div>').join('') +
             '<div class="hppr"><span>下一档金额</span><b>' + tranche.toLocaleString('zh-CN') + '</b></div>' +
             '<div class="hppr"><span>本笔止损价（新买入逐笔 −' + Math.round(stopLoss * 100) + '%）</span><b>成交价 × ' + (1 - stopLoss).toFixed(2) + '</b></div>';
+          d.querySelectorAll('select[data-pros]').forEach(sel => {
+            sel.onchange = () => { setProsperity(sel.dataset.pros, sel.value); renderSaved(); };
+          });
         }
         d.hidden = !d.hidden;
         const hint = card.querySelector('.hphint');
@@ -699,6 +729,7 @@
 
   // 供测试调用：解析器必须能被单独验证，不能只靠"页面上看着对"
   window.HOLDINGS = { parse, splitCells, KEY, parseAccount, crossCheck, parseBroker, checkConcentration, parseStacked, TEMPLATES };
+  window.GATE_PROS = { get: prosperityOf, set: setProsperity, KEY: PROS_KEY };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
   else wire();
 })();

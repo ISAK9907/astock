@@ -19,7 +19,8 @@ const STOCKS = (() => {
   try {
     const raw = JSON.parse(readFileSync('stocks.json', 'utf8'));
     const o = {};
-    for (const s of Object.values(raw.series)) o[s.name] = s.bars.slice(-CHART_BARS).map((b) => [b.d, b.c]);
+    // [日期, 收盘, 成交量]：第 3 位给卡片图里的量柱和「地量/放量」判定用
+    for (const s of Object.values(raw.series)) o[s.name] = s.bars.slice(-CHART_BARS).map((b) => [b.d, b.c, b.v || 0]);
     return o;
   } catch { return null; }
 })();

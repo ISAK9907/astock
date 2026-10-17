@@ -5,7 +5,8 @@
 import { readFileSync } from 'node:fs';
 
 const snap = JSON.parse(readFileSync('pa7k3f.json', 'utf8'));
-const series = (() => { const raw = JSON.parse(readFileSync('stocks.json', 'utf8')); const o = {}; for (const s of Object.values(raw.series)) o[s.name] = s.bars.slice(-250).map((b) => [b.d, b.c]); return o; })();
+const series = (() => { const raw = JSON.parse(readFileSync('stocks.json', 'utf8')); const o = {}; // [日期, 收盘, 成交量] —— 止跌五件事②要看量
+  for (const s of Object.values(raw.series)) o[s.name] = s.bars.slice(-250).map((b) => [b.d, b.c, b.v || 0]); return o; })();
 
 const store = {}, els = {}, listeners = [];
 const fakeEl = () => ({ _h: '', hidden: false, value: '', files: [], dataset: {}, textContent: '', set innerHTML(v) { this._h = v; }, get innerHTML() { return this._h; }, addEventListener() {}, querySelectorAll: () => [], querySelector: () => null });

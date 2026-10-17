@@ -36,7 +36,10 @@ async function kline(sym, n) {
     const txt = await r.text();
     // 新浪返回的是**不带引号的键**（近似 JSON），要补引号才能 parse
     const j = JSON.parse(txt.replace(/([{,]\s*)([a-zA-Z_]+)\s*:/g, '$1"$2":'));
-    return j.map((x) => ({ d: x.day, c: +x.close })).filter((b) => b.d && isFinite(b.c));
+    // 收盘价 + **成交量**都要：量价一起看是《不破不立》那条视频的核心口径
+    // （新浪日线本来就有 volume，单位=股/份，足够用来判地量/天量/价量配合）。
+    return j.map((x) => ({ d: x.day, c: +x.close, v: +x.volume || 0 }))
+      .filter((b) => b.d && isFinite(b.c));
   } finally { clearTimeout(t); }
 }
 
