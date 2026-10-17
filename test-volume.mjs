@@ -126,6 +126,10 @@ console.log('\n(3) 急跌缩量 = 可能跌停卖不出');
 const C = GATE_VOL(STOCKS.跌停缩量);
 console.log('    连跌', C.downDays, '日 | fallingShrink', C.fallingShrink);
 ok(C.fallingShrink === true, '连跌≥3日且量缩 → 标记出来');
+const C5 = GATE_STEPS('跌停缩量');
+console.log('    ②:', C5.steps[1].ok, '|', C5.steps[1].value.slice(0, 90));
+ok(C5.steps[1].ok === false, '② 不算达成（急跌缩量要另看，不能当地量见底）');
+ok(/跌停/.test(C5.steps[1].value), '② 的文案点明「可能跌停卖不出」');
 
 console.log('\n(4) 量价四组合');
 const D = GATE_VOL(STOCKS.价涨量增);

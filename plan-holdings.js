@@ -557,6 +557,13 @@
             `<span style="color:${col}">${pp == null ? '' : (pp >= 0 ? '+' : '') + pp.toFixed(2) + '%'}</span>` +
             `<span class="dim">占账户 ${shareAcct == null ? '—（未同步）' : shareAcct.toFixed(1) + '%'} · 占持仓 ${shareMv.toFixed(1)}%</span></div>` +
             `<div class="hpbar"><i style="width:${Math.min(100, shareMain)}%"></i></div>` +
+            // 急跌缩量直接写在卡片上：不用展开就能看到（视频点名的陷阱）
+            (() => {
+              const S = window.STOCKS?.[r.name];
+              const V = S && window.GATE_VOL ? window.GATE_VOL(S) : null;
+              return V && V.fallingShrink
+                ? `<div class="hpwarn">⚠ 连跌 ${V.downDays} 日 + 缩量：可能跌停卖不出（不是地量见底）</div>` : '';
+            })() +
             // 点开看：这只的建议 + 可执行价格（用户要的"滑动可以查看持仓建议，计划操作价格"）
             `<div class="hpdetail" data-detail="${esc(r.name ?? '')}" hidden></div>` +
             `<div class="hphint">点开看曲线·MACD·建议与计划操作价格 ▾</div></div>`;

@@ -393,13 +393,18 @@
     };
 
     // ② 缩到地量（量能）
+    // ⚠️ 视频原话："但急跌时的缩量要另看" —— 连跌+缩量往往是**跌停卖不出去**，
+    //    不是"想卖的人变少了"。这时候②不能算达成，否则会把"跌停"读成"地量见底"。
     const step2 = {
       key: '缩到地量', on: '成交量（5日均量）',
-      ok: V.hasData && V.isLow,
+      ok: V.hasData && V.isLow && !V.fallingShrink,
       value: !V.hasData
         ? '没有成交量数据（stocks.json 是老格式，重跑 node fetch-stocks.mjs）'
         : `5日均量 ${fmtVol(V.v5)}，近一年 ${V.pct}% 分位（地量线 ${fmtVol(V.p10)}）`
-          + (V.isHigh ? '【天量】' : (V.isLow ? '【地量】' : '')),
+          + (V.isHigh ? '【天量】' : (V.isLow ? '【地量】' : ''))
+          + (V.fallingShrink
+              ? `　⚠ 连跌 ${V.downDays} 日且缩量：可能是跌停卖不出，不是卖盘枯竭（视频：急跌缩量要另看）`
+              : ''),
     };
 
     // ③ 底背离：只有"收盘跌破前低"时才需要
@@ -723,6 +728,17 @@
             (done.length ? '　已过第⑤项（放量站回前高）：' + done.map((r) => r.name).join('、')
                          : '　还没有一只过第⑤项（放量站回前高）—— 按新规则，一只都不放行'),
         });
+      }
+    }
+    // ⑦-b 急跌缩量：单独报一条（视频专门提醒过的陷阱）
+    if (typeof volStats === 'function') {
+      const fs2 = holdings
+        .map((h) => ({ name: h.name, v: window.STOCKS?.[h.name] ? volStats(window.STOCKS[h.name]) : null }))
+        .filter((r) => r.v && r.v.fallingShrink);
+      if (fs2.length) {
+        items.push({ k: 'warn', t: '急跌缩量（不是地量见底）：' +
+          fs2.map((r) => r.name + '（连跌 ' + r.v.downDays + ' 日且量缩）').join('、') +
+          ' —— 视频口径：这种多是跌停卖不出去，止跌②不算达成' });
       }
     }
     // ⑧ 景气（人工判断）：视频《不破不立》的大前提 —— 景气还在，跌破前低多半只是回撤；

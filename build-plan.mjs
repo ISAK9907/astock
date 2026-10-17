@@ -136,6 +136,9 @@ details summary{cursor:pointer;font-size:12.5px;color:#5b8def;padding:6px 0}
 .hpbar{height:3px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
 .hpbar i{display:block;height:100%;background:#5b8def}
 .hphint{font-size:10.5px;color:var(--dim);margin-top:6px}
+/* 急跌缩量警示（视频《不破不立》：跌停卖不出 ≠ 地量见底） */
+.hpwarn{margin-top:6px;padding:4px 8px;border-radius:5px;background:rgba(224,128,58,.12);
+  border-left:3px solid #e0803a;color:#f0a860;font-size:11px;line-height:1.4}
 .hpdetail{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
 .hpadv{font-size:12.5px;line-height:1.6;padding:7px 9px;border-radius:7px;margin-bottom:8px}
 .hpadv.ok{background:rgba(47,158,107,.12);border-left:3px solid #2f9e6b}
