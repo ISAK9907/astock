@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 build-worker.mjs 自动生成，请勿直接编辑。
 // 改判定逻辑请改 signal.mjs / global-quote.mjs；改 Worker 入口请改 worker/handler.js。
-// 生成时间：2026-10-19T08:28:25.670Z
-// 内联的状态文件：T=2026-10-19（generatedAt=2026-10-19T08:28:25.210Z）
+// 生成时间：2026-10-22T08:28:20.901Z
+// 内联的状态文件：T=2026-10-22（generatedAt=2026-10-22T08:28:20.568Z）
 
 // ===== signal.mjs =====
 // 盘前信号核心逻辑（被 build-dashboard / serve-dashboard / daily-update 共用）
@@ -276,7 +276,7 @@ function forecastGap(q) {
 
 
 // ===== signal-state.json（内联）=====
-const STATE = {"generatedAt":"2026-10-19T08:28:25.210Z","T":"2026-10-19","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-10-19","retT":0.3939423294262001,"amtRatio":0.8420755161245274,"close":3730.92},{"key":"szcz","name":"深证成指","date":"2026-10-19","retT":0.1267786546194749,"amtRatio":0.8260473553392298,"close":11817.423},{"key":"cyb","name":"创业板指","date":"2026-10-19","retT":-0.9410326145766423,"amtRatio":0.8170695149189006,"close":2746.291},{"key":"hs300","name":"沪深300","date":"2026-10-19","retT":0.09411093341262777,"amtRatio":0.8329516975606565,"close":4174.535}]};
+const STATE = {"generatedAt":"2026-10-22T08:28:20.568Z","T":"2026-10-22","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-10-22","retT":-1.4813777427061026,"amtRatio":0.8763743785431817,"close":3658.026},{"key":"szcz","name":"深证成指","date":"2026-10-22","retT":-3.8934376809563354,"amtRatio":0.9187329051700959,"close":11357.319},{"key":"cyb","name":"创业板指","date":"2026-10-22","retT":-4.371861907218221,"amtRatio":0.9296627185585412,"close":2576.901},{"key":"hs300","name":"沪深300","date":"2026-10-22","retT":-1.8393552419423531,"amtRatio":1.0073304860654064,"close":4036.297}]};
 
 // ===== worker/handler.js =====
 // Cloudflare Worker 的 /signal 处理器 —— 从 serve-dashboard.mjs 原样搬过来。
