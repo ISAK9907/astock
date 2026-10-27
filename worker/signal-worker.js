@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 build-worker.mjs 自动生成，请勿直接编辑。
 // 改判定逻辑请改 signal.mjs / global-quote.mjs；改 Worker 入口请改 worker/handler.js。
-// 生成时间：2026-10-22T08:28:20.901Z
-// 内联的状态文件：T=2026-10-22（generatedAt=2026-10-22T08:28:20.568Z）
+// 生成时间：2026-10-27T13:43:02.177Z
+// 内联的状态文件：T=2026-10-27（generatedAt=2026-10-27T13:43:01.700Z）
 
 // ===== signal.mjs =====
 // 盘前信号核心逻辑（被 build-dashboard / serve-dashboard / daily-update 共用）
@@ -276,7 +276,7 @@ function forecastGap(q) {
 
 
 // ===== signal-state.json（内联）=====
-const STATE = {"generatedAt":"2026-10-22T08:28:20.568Z","T":"2026-10-22","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-10-22","retT":-1.4813777427061026,"amtRatio":0.8763743785431817,"close":3658.026},{"key":"szcz","name":"深证成指","date":"2026-10-22","retT":-3.8934376809563354,"amtRatio":0.9187329051700959,"close":11357.319},{"key":"cyb","name":"创业板指","date":"2026-10-22","retT":-4.371861907218221,"amtRatio":0.9296627185585412,"close":2576.901},{"key":"hs300","name":"沪深300","date":"2026-10-22","retT":-1.8393552419423531,"amtRatio":1.0073304860654064,"close":4036.297}]};
+const STATE = {"generatedAt":"2026-10-27T13:43:01.700Z","T":"2026-10-27","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-10-27","retT":-1.3311354637703166,"amtRatio":0.8624409458777432,"close":3648.301},{"key":"szcz","name":"深证成指","date":"2026-10-27","retT":-0.982520610718074,"amtRatio":0.8820077584581859,"close":11245.731},{"key":"cyb","name":"创业板指","date":"2026-10-27","retT":-3.414448323307673,"amtRatio":0.8991367017057775,"close":2548.149},{"key":"hs300","name":"沪深300","date":"2026-10-27","retT":-1.3156445410547946,"amtRatio":0.9085374679596024,"close":4049.552},{"key":"csi2000","name":"中证2000","date":"2026-10-27","retT":-3.174197759473285,"amtRatio":0.8909598475726663,"close":2729.5}]};
 
 // ===== worker/handler.js =====
 // Cloudflare Worker 的 /signal 处理器 —— 从 serve-dashboard.mjs 原样搬过来。
