@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-11-02T10:40:38.031Z",
- "now": "2026-11-02 18:40",
+ "generatedAt": "2026-11-03T07:41:09.880Z",
+ "now": "2026-11-03 15:41",
  "isTradingDay": true,
  "daily": {
   "label": "盘后日更",
@@ -10,7 +10,7 @@
   "lastDate": "2026-11-02",
   "expected": "2026-11-02",
   "behind": 0,
-  "inPipeline": false,
+  "inPipeline": true,
   "lastScheduledOk": "2026-11-02 15:44",
   "lastScheduledBehind": 0,
   "lastManualOk": "2026-10-29 22:04",
@@ -36,16 +36,16 @@
   "label": "盘前更新",
   "schedule": "工作日 09:26（本机）",
   "available": true,
-  "lastOk": "2026-11-02 09:26",
-  "lastDate": "2026-11-02",
+  "lastOk": "2026-11-03 09:26",
+  "lastDate": "2026-11-03",
   "expected": "2026-11-02",
   "behind": 0,
-  "inPipeline": false,
-  "lastScheduledOk": "2026-11-02 09:26",
+  "inPipeline": true,
+  "lastScheduledOk": "2026-11-03 09:26",
   "lastScheduledBehind": 0,
   "lastManualOk": "2026-10-08 13:36",
   "lastRecord": {
-   "at": "2026-11-02T01:26:03.021Z",
+   "at": "2026-11-03T01:26:01.326Z",
    "kind": "premarket",
    "rc": 0,
    "ok": true,
@@ -53,14 +53,14 @@
   },
   "manualOnly": false,
   "lastAttempt": {
-   "startedAt": "2026-11-02 09:26",
+   "startedAt": "2026-11-03 09:26",
    "finished": true,
    "failed": false,
    "interrupted": false,
    "evidence": "rc=0 source=scheduled"
   },
   "ok": true,
-  "note": ""
+  "note": "  – 推送手机           未配置（不需要推送就保持这样）"
  },
  "cloud": {
   "label": "云端兜底",
