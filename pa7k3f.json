@@ -1,12 +1,9 @@
 {
- "updatedAt": "2026-11-03T12:26:38.079Z",
- "source": "同花顺投资账本 · 组合「股票账户」（插件自动同步）",
- "quoteFrom": "ledger",
+ "updatedAt": "2026-11-03T12:47:22.487Z",
+ "source": "同花顺投资账本 · 组合「undefined」（插件自动同步）",
  "ledger": {
-  "queriedAt": "2026-11-03T12:25:12.989Z",
-  "uploadedAt": "2026-11-03T12:21:06.000Z",
-  "portfolioId": "176150094",
-  "broker": "股票账户*0481"
+  "queriedAt": "2026-11-03T12:47:22.313Z",
+  "uploadedAt": "2026-11-03T12:21:06.000Z"
  },
  "account": {
   "assets": 522562.68,
