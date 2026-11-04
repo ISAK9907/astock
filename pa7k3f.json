@@ -1,8 +1,8 @@
 {
- "updatedAt": "2026-11-03T12:47:22.487Z",
+ "updatedAt": "2026-11-04T03:02:50.537Z",
  "source": "同花顺投资账本 · 组合「undefined」（插件自动同步）",
  "ledger": {
-  "queriedAt": "2026-11-03T12:47:22.313Z",
+  "queriedAt": "2026-11-04T03:02:50.459Z",
   "uploadedAt": "2026-11-03T12:21:06.000Z"
  },
  "account": {
@@ -10,7 +10,7 @@
   "marketValue": 374175.7,
   "cash": 148386.98,
   "pnl": -29190.13,
-  "dayPnl": 14057.16,
+  "dayPnl": -18693.8,
   "posPct": 71.6
  },
  "holdings": [
@@ -24,8 +24,8 @@
    "value": 153586,
    "pnl": -10209.7,
    "pnlpct": -6.23,
-   "dayPnl": 8633.8,
-   "dayPct": 2.5,
+   "dayPnl": -17112,
+   "dayPct": -5.08,
    "days": null,
    "code": "688256",
    "market": "sh"
@@ -40,8 +40,8 @@
    "value": 19089.2,
    "pnl": -868,
    "pnlpct": -4.35,
-   "dayPnl": 0,
-   "dayPct": null,
+   "dayPnl": -858,
+   "dayPct": -4.3,
    "days": null,
    "code": "513310",
    "market": "sh"
@@ -56,8 +56,8 @@
    "value": 38407.6,
    "pnl": -1462,
    "pnlpct": -3.67,
-   "dayPnl": 1037.7,
-   "dayPct": 1.79,
+   "dayPnl": -699.3,
+   "dayPct": -1.42,
    "days": null,
    "code": "563300",
    "market": "sh"
@@ -72,8 +72,8 @@
    "value": 93445,
    "pnl": 234.68,
    "pnlpct": 0.25,
-   "dayPnl": 2946.48,
-   "dayPct": 2.57,
+   "dayPnl": 880,
+   "dayPct": 0.95,
    "days": null,
    "code": "002594",
    "market": "sz"
@@ -88,8 +88,8 @@
    "value": 9765.4,
    "pnl": -194.6,
    "pnlpct": -1.96,
-   "dayPnl": 279.9,
-   "dayPct": 2.95,
+   "dayPnl": 0,
+   "dayPct": 0,
    "days": null,
    "code": "513770",
    "market": "sh"
@@ -104,8 +104,8 @@
    "value": 37057.5,
    "pnl": -2792.1,
    "pnlpct": -7,
-   "dayPnl": 932,
-   "dayPct": 1.97,
+   "dayPnl": -1244.5,
+   "dayPct": -3.25,
    "days": null,
    "code": "588000",
    "market": "sh"
@@ -120,8 +120,8 @@
    "value": 22825,
    "pnl": -13898.41,
    "pnlpct": -37.85,
-   "dayPnl": 227.28,
-   "dayPct": 0.64,
+   "dayPnl": 340,
+   "dayPct": 1.51,
    "days": null,
    "code": "002192",
    "market": "sz"
