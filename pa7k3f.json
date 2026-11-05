@@ -1,16 +1,16 @@
 {
- "updatedAt": "2026-11-04T07:55:13.335Z",
+ "updatedAt": "2026-11-05T07:55:05.435Z",
  "source": "同花顺投资账本 · 组合「undefined」（插件自动同步）",
  "ledger": {
-  "queriedAt": "2026-11-04T07:55:13.260Z",
-  "uploadedAt": "2026-11-03T12:21:06.000Z"
+  "queriedAt": "2026-11-05T07:55:05.354Z",
+  "uploadedAt": "2026-11-05T02:59:42.000Z"
  },
  "account": {
   "assets": 522562.68,
   "marketValue": 374175.7,
   "cash": 148386.98,
   "pnl": -29190.13,
-  "dayPnl": -18693.8,
+  "dayPnl": 41491.52,
   "posPct": 71.6
  },
  "holdings": [
@@ -24,8 +24,8 @@
    "value": 153586,
    "pnl": -10209.7,
    "pnlpct": -6.23,
-   "dayPnl": -17112,
-   "dayPct": -5.08,
+   "dayPnl": 32205.77,
+   "dayPct": 6.99,
    "days": null,
    "code": "688256",
    "market": "sh"
@@ -40,8 +40,8 @@
    "value": 19089.2,
    "pnl": -868,
    "pnlpct": -4.35,
-   "dayPnl": -858,
-   "dayPct": -4.3,
+   "dayPnl": 1872.4,
+   "dayPct": 4.9,
    "days": null,
    "code": "513310",
    "market": "sh"
@@ -56,8 +56,8 @@
    "value": 38407.6,
    "pnl": -1462,
    "pnlpct": -3.67,
-   "dayPnl": -699.3,
-   "dayPct": -1.42,
+   "dayPnl": 1972,
+   "dayPct": 2.92,
    "days": null,
    "code": "563300",
    "market": "sh"
@@ -72,8 +72,8 @@
    "value": 93445,
    "pnl": 234.68,
    "pnlpct": 0.25,
-   "dayPnl": 880,
-   "dayPct": 0.95,
+   "dayPnl": 289.45,
+   "dayPct": 0.26,
    "days": null,
    "code": "002594",
    "market": "sz"
@@ -88,8 +88,8 @@
    "value": 9765.4,
    "pnl": -194.6,
    "pnlpct": -1.96,
-   "dayPnl": 0,
-   "dayPct": 0,
+   "dayPnl": 124.4,
+   "dayPct": 1.27,
    "days": null,
    "code": "513770",
    "market": "sh"
@@ -104,8 +104,8 @@
    "value": 37057.5,
    "pnl": -2792.1,
    "pnlpct": -7,
-   "dayPnl": -1244.5,
-   "dayPct": -3.25,
+   "dayPnl": 4202.5,
+   "dayPct": 9.01,
    "days": null,
    "code": "588000",
    "market": "sh"
@@ -120,8 +120,8 @@
    "value": 22825,
    "pnl": -13898.41,
    "pnlpct": -37.85,
-   "dayPnl": 340,
-   "dayPct": 1.51,
+   "dayPnl": 825,
+   "dayPct": 3.61,
    "days": null,
    "code": "002192",
    "market": "sz"
