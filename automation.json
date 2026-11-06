@@ -1,66 +1,18 @@
 {
- "generatedAt": "2026-11-05T07:41:13.880Z",
- "now": "2026-11-05 15:41",
+ "generatedAt": "2026-11-06T15:25:52.238Z",
+ "now": "2026-11-06 23:25",
  "isTradingDay": true,
  "daily": {
   "label": "盘后日更",
   "schedule": "工作日 15:40（本机）",
-  "available": true,
-  "lastOk": "2026-11-04 15:44",
-  "lastDate": "2026-11-04",
-  "expected": "2026-11-04",
-  "behind": 0,
-  "inPipeline": true,
-  "lastScheduledOk": "2026-11-04 15:44",
-  "lastScheduledBehind": 0,
-  "lastManualOk": "2026-10-29 22:04",
-  "lastRecord": {
-   "at": "2026-11-04T07:44:34.905Z",
-   "kind": "daily",
-   "rc": 0,
-   "ok": true,
-   "source": "scheduled"
-  },
-  "manualOnly": false,
-  "lastAttempt": {
-   "startedAt": "2026-11-04 15:44",
-   "finished": true,
-   "failed": false,
-   "interrupted": false,
-   "evidence": "rc=0 source=scheduled"
-  },
-  "ok": true,
-  "note": "45日5分钟线:ok 事件日历:ok 日线数据:ok 涨跌停/成交额:ok 长历史日线:ok 跌停三维:ok 情绪/回测:ok 统计重算:ok 自动化健康:ok 全球市场日线:ok 估值数据:ok 持仓个股日线:ok 个股闸门:ok 计划台分析:ok 计划台生成:ok 推送手机:ok 生成看板:ok 历史备份:ok"
+  "available": false,
+  "note": "本机日志不可用（云端构建时读不到）"
  },
  "premarket": {
   "label": "盘前更新",
   "schedule": "工作日 09:26（本机）",
-  "available": true,
-  "lastOk": "2026-11-05 09:26",
-  "lastDate": "2026-11-05",
-  "expected": "2026-11-04",
-  "behind": 0,
-  "inPipeline": true,
-  "lastScheduledOk": "2026-11-05 09:26",
-  "lastScheduledBehind": 0,
-  "lastManualOk": "2026-10-08 13:36",
-  "lastRecord": {
-   "at": "2026-11-05T01:26:16.205Z",
-   "kind": "premarket",
-   "rc": 0,
-   "ok": true,
-   "source": "scheduled"
-  },
-  "manualOnly": false,
-  "lastAttempt": {
-   "startedAt": "2026-11-05 09:26",
-   "finished": true,
-   "failed": false,
-   "interrupted": false,
-   "evidence": "rc=0 source=scheduled"
-  },
-  "ok": true,
-  "note": "  – 推送手机           未配置（不需要推送就保持这样）"
+  "available": false,
+  "note": "本机日志不可用（云端构建时读不到）"
  },
  "cloud": {
   "label": "云端兜底",
