@@ -1,16 +1,16 @@
 {
- "updatedAt": "2026-11-05T13:10:24.318Z",
+ "updatedAt": "2026-11-09T16:05:47.433Z",
  "source": "同花顺投资账本 · 组合「undefined」（插件自动同步）",
  "ledger": {
-  "queriedAt": "2026-11-05T13:07:26.985Z",
+  "queriedAt": "2026-11-09T16:05:47.343Z",
   "uploadedAt": "2026-11-05T13:06:37.000Z"
  },
  "account": {
   "assets": 543700.64,
   "marketValue": 366302.9,
   "cash": 177397.74,
-  "pnl": -7751.37,
-  "dayPnl": 22921.72,
+  "pnl": -9891.189999999999,
+  "dayPnl": 1464.9,
   "posPct": 67.37
  },
  "holdings": [
@@ -24,26 +24,10 @@
    "value": 30976,
    "pnl": 1083.1,
    "pnlpct": 3.62,
-   "dayPnl": 1640.9,
-   "dayPct": 2.82,
+   "dayPnl": 96.8,
+   "dayPct": 0.32,
    "days": null,
    "code": "563300",
-   "market": "sh"
-  },
-  {
-   "name": "港股互联",
-   "sector": "港股互联",
-   "qty": 1900,
-   "avail": 1900,
-   "cost": 0,
-   "price": 0.343,
-   "value": 651.7,
-   "pnl": 673.1,
-   "pnlpct": null,
-   "dayPnl": 124.4,
-   "dayPct": 1.27,
-   "days": null,
-   "code": "513770",
    "market": "sh"
   },
   {
@@ -56,11 +40,27 @@
    "value": 94875,
    "pnl": 1737.46,
    "pnlpct": 1.87,
-   "dayPnl": 289.45,
-   "dayPct": 0.26,
+   "dayPnl": -363,
+   "dayPct": -0.39,
    "days": null,
    "code": "002594",
    "market": "sz"
+  },
+  {
+   "name": "港股互联",
+   "sector": "港股互联",
+   "qty": 1900,
+   "avail": 1900,
+   "cost": 0,
+   "price": 0.343,
+   "value": 651.7,
+   "pnl": 673.1,
+   "pnlpct": null,
+   "dayPnl": -3.8,
+   "dayPct": -0.59,
+   "days": null,
+   "code": "513770",
+   "market": "sh"
   },
   {
    "name": "科创50ETF",
@@ -72,8 +72,8 @@
    "value": 40604.2,
    "pnl": 829.3,
    "pnlpct": 2.09,
-   "dayPnl": 3215,
-   "dayPct": 8.68,
+   "dayPnl": 29.9,
+   "dayPct": 0.08,
    "days": null,
    "code": "588000",
    "market": "sh"
@@ -88,8 +88,8 @@
    "value": 35196,
    "pnl": -11784.41,
    "pnlpct": -25.08,
-   "dayPnl": 825,
-   "dayPct": 3.61,
+   "dayPnl": -1631,
+   "dayPct": -4.49,
    "days": null,
    "code": "002192",
    "market": "sz"
@@ -104,8 +104,8 @@
    "value": 164000,
    "pnl": -2429.74,
    "pnlpct": -1.46,
-   "dayPnl": 0,
-   "dayPct": null,
+   "dayPnl": 3336,
+   "dayPct": 2.23,
    "days": null,
    "code": "688808",
    "market": "sh"
