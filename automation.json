@@ -1,51 +1,51 @@
 {
- "generatedAt": "2026-11-09T15:59:22.389Z",
- "now": "2026-11-09 23:59",
+ "generatedAt": "2026-11-10T05:15:30.414Z",
+ "now": "2026-11-10 13:15",
  "isTradingDay": true,
  "daily": {
   "label": "盘后日更",
   "schedule": "工作日 15:40（本机）",
   "available": true,
-  "lastOk": "2026-11-05 15:44",
-  "lastDate": "2026-11-05",
-  "expected": "2026-11-06",
-  "behind": 1,
+  "lastOk": "2026-11-10 00:04",
+  "lastDate": "2026-11-10",
+  "expected": "2026-11-09",
+  "behind": 0,
   "inPipeline": true,
   "lastScheduledOk": "2026-11-05 15:44",
-  "lastScheduledBehind": 1,
-  "lastManualOk": "2026-10-29 22:04",
+  "lastScheduledBehind": 2,
+  "lastManualOk": "2026-11-10 00:04",
   "lastRecord": {
-   "at": "2026-11-05T07:44:26.743Z",
+   "at": "2026-11-09T16:04:58.771Z",
    "kind": "daily",
    "rc": 0,
    "ok": true,
-   "source": "scheduled"
+   "source": "manual"
   },
-  "manualOnly": false,
+  "manualOnly": true,
   "lastAttempt": {
-   "startedAt": "2026-11-05 15:44",
+   "startedAt": "2026-11-10 00:04",
    "finished": true,
    "failed": false,
    "interrupted": false,
-   "evidence": "rc=0 source=scheduled"
+   "evidence": "rc=0 source=manual"
   },
   "ok": false,
-  "note": "45日5分钟线:ok 事件日历:ok 日线数据:ok 涨跌停/成交额:ok 长历史日线:ok 跌停三维:ok 情绪/回测:ok 统计重算:ok 自动化健康:ok 全球市场日线:ok 估值数据:ok 持仓个股日线:ok 个股闸门:ok 计划台分析:ok 计划台生成:ok 推送手机:ok 生成看板:ok 历史备份:ok"
+  "note": "45日5分钟线:ok 事件日历:ok 日线数据:ok 涨跌停/成交额:ok 长历史日线:ok 跌停三维:ok 情绪/回测:ok 统计重算:ok 自动化健康:ok 全球市场日线:ok 估值数据:ok 持仓个股日线:ok 开盘缺口回测:ok 个股闸门:ok 计划台分析:ok 计划台生成:ok 风控提醒:ok 推送手机:ok"
  },
  "premarket": {
   "label": "盘前更新",
   "schedule": "工作日 09:26（本机）",
   "available": true,
-  "lastOk": "2026-11-05 09:26",
-  "lastDate": "2026-11-05",
-  "expected": "2026-11-06",
-  "behind": 1,
+  "lastOk": "2026-11-10 09:26",
+  "lastDate": "2026-11-10",
+  "expected": "2026-11-09",
+  "behind": 0,
   "inPipeline": true,
-  "lastScheduledOk": "2026-11-05 09:26",
-  "lastScheduledBehind": 1,
+  "lastScheduledOk": "2026-11-10 09:26",
+  "lastScheduledBehind": 0,
   "lastManualOk": "2026-10-08 13:36",
   "lastRecord": {
-   "at": "2026-11-05T01:26:16.205Z",
+   "at": "2026-11-10T01:26:02.117Z",
    "kind": "premarket",
    "rc": 0,
    "ok": true,
@@ -53,13 +53,13 @@
   },
   "manualOnly": false,
   "lastAttempt": {
-   "startedAt": "2026-11-05 09:26",
+   "startedAt": "2026-11-10 09:26",
    "finished": true,
    "failed": false,
    "interrupted": false,
    "evidence": "rc=0 source=scheduled"
   },
-  "ok": false,
+  "ok": true,
   "note": "  – 推送手机           未配置（不需要推送就保持这样）"
  },
  "cloud": {
