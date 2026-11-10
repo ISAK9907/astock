@@ -1,16 +1,16 @@
 {
- "updatedAt": "2026-11-09T16:05:47.433Z",
+ "updatedAt": "2026-11-10T05:09:10.057Z",
  "source": "同花顺投资账本 · 组合「undefined」（插件自动同步）",
  "ledger": {
-  "queriedAt": "2026-11-09T16:05:47.343Z",
-  "uploadedAt": "2026-11-05T13:06:37.000Z"
+  "queriedAt": "2026-11-10T05:09:09.978Z",
+  "uploadedAt": "2026-11-10T05:07:16.000Z"
  },
  "account": {
   "assets": 543700.64,
   "marketValue": 366302.9,
   "cash": 177397.74,
-  "pnl": -9891.189999999999,
-  "dayPnl": 1464.9,
+  "pnl": -7751.37,
+  "dayPnl": -2831.1400000000003,
   "posPct": 67.37
  },
  "holdings": [
@@ -24,10 +24,26 @@
    "value": 30976,
    "pnl": 1083.1,
    "pnlpct": 3.62,
-   "dayPnl": 96.8,
+   "dayPnl": 128,
    "dayPct": 0.32,
    "days": null,
    "code": "563300",
+   "market": "sh"
+  },
+  {
+   "name": "港股互联",
+   "sector": "港股互联",
+   "qty": 1900,
+   "avail": 1900,
+   "cost": 0,
+   "price": 0.343,
+   "value": 651.7,
+   "pnl": 673.1,
+   "pnlpct": null,
+   "dayPnl": -3.8,
+   "dayPct": -0.59,
+   "days": null,
+   "code": "513770",
    "market": "sh"
   },
   {
@@ -47,22 +63,6 @@
    "market": "sz"
   },
   {
-   "name": "港股互联",
-   "sector": "港股互联",
-   "qty": 1900,
-   "avail": 1900,
-   "cost": 0,
-   "price": 0.343,
-   "value": 651.7,
-   "pnl": 673.1,
-   "pnlpct": null,
-   "dayPnl": -3.8,
-   "dayPct": -0.59,
-   "days": null,
-   "code": "513770",
-   "market": "sh"
-  },
-  {
    "name": "科创50ETF",
    "sector": "科创板宽基",
    "qty": 29900,
@@ -72,8 +72,8 @@
    "value": 40604.2,
    "pnl": 829.3,
    "pnlpct": 2.09,
-   "dayPnl": 29.9,
-   "dayPct": 0.08,
+   "dayPnl": 43.5,
+   "dayPct": 0.07,
    "days": null,
    "code": "588000",
    "market": "sh"
