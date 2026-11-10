@@ -1,9 +1,9 @@
 {
- "updatedAt": "2026-11-10T05:09:10.057Z",
+ "updatedAt": "2026-11-10T07:55:10.776Z",
  "source": "同花顺投资账本 · 组合「undefined」（插件自动同步）",
  "ledger": {
-  "queriedAt": "2026-11-10T05:09:09.978Z",
-  "uploadedAt": "2026-11-10T05:07:16.000Z"
+  "queriedAt": "2026-11-10T07:55:10.696Z",
+  "uploadedAt": "2026-11-10T05:13:21.000Z"
  },
  "account": {
   "assets": 543700.64,
