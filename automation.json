@@ -1,18 +1,66 @@
 {
- "generatedAt": "2026-11-12T16:20:19.117Z",
- "now": "2026-11-13 00:20",
+ "generatedAt": "2026-11-12T07:41:19.598Z",
+ "now": "2026-11-12 15:41",
  "isTradingDay": true,
  "daily": {
   "label": "盘后日更",
   "schedule": "工作日 15:40（本机）",
-  "available": false,
-  "note": "本机日志不可用（云端构建时读不到）"
+  "available": true,
+  "lastOk": "2026-11-11 15:42",
+  "lastDate": "2026-11-11",
+  "expected": "2026-11-11",
+  "behind": 0,
+  "inPipeline": true,
+  "lastScheduledOk": "2026-11-11 15:42",
+  "lastScheduledBehind": 0,
+  "lastManualOk": "2026-11-10 13:18",
+  "lastRecord": {
+   "at": "2026-11-11T07:42:17.764Z",
+   "kind": "daily",
+   "rc": 0,
+   "ok": true,
+   "source": "scheduled"
+  },
+  "manualOnly": false,
+  "lastAttempt": {
+   "startedAt": "2026-11-11 15:42",
+   "finished": true,
+   "failed": false,
+   "interrupted": false,
+   "evidence": "rc=0 source=scheduled"
+  },
+  "ok": true,
+  "note": "45日5分钟线:ok 事件日历:ok 日线数据:ok 涨跌停/成交额:ok 长历史日线:ok 跌停三维:ok 情绪/回测:ok 统计重算:ok 自动化健康:ok 全球市场日线:ok 估值数据:ok 持仓个股日线:ok 开盘缺口回测:ok 个股闸门:ok 计划台分析:ok 计划台生成:ok 风控提醒:ok 推送手机:ok"
  },
  "premarket": {
   "label": "盘前更新",
   "schedule": "工作日 09:26（本机）",
-  "available": false,
-  "note": "本机日志不可用（云端构建时读不到）"
+  "available": true,
+  "lastOk": "2026-11-12 09:26",
+  "lastDate": "2026-11-12",
+  "expected": "2026-11-11",
+  "behind": 0,
+  "inPipeline": true,
+  "lastScheduledOk": "2026-11-12 09:26",
+  "lastScheduledBehind": 0,
+  "lastManualOk": "2026-10-08 13:36",
+  "lastRecord": {
+   "at": "2026-11-12T01:26:01.228Z",
+   "kind": "premarket",
+   "rc": 0,
+   "ok": true,
+   "source": "scheduled"
+  },
+  "manualOnly": false,
+  "lastAttempt": {
+   "startedAt": "2026-11-12 09:26",
+   "finished": true,
+   "failed": false,
+   "interrupted": false,
+   "evidence": "rc=0 source=scheduled"
+  },
+  "ok": true,
+  "note": "  – 推送手机           未配置（不需要推送就保持这样）"
  },
  "cloud": {
   "label": "云端兜底",
