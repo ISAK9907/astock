@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-12T16:18:27.720Z",
+ "generatedAt": "2026-11-13T15:42:21.333Z",
  "bilateralAsOf": "2026-09-21",
  "events": [
   {
@@ -106,7 +106,7 @@
    "span": "3/16-3/17",
    "kind": "议息会",
    "name": "FOMC 议息会议",
-   "note": "含经济预测 + 点阵图",
+   "note": "无点阵图",
    "src": "official",
    "days": 124,
    "endDays": 124
@@ -136,7 +136,7 @@
    "span": "6/8-6/9",
    "kind": "议息会",
    "name": "FOMC 议息会议",
-   "note": "含经济预测 + 点阵图",
+   "note": "无点阵图",
    "src": "official",
    "days": 208,
    "endDays": 208
@@ -156,7 +156,7 @@
    "span": "9/14-9/15",
    "kind": "议息会",
    "name": "FOMC 议息会议",
-   "note": "含经济预测 + 点阵图",
+   "note": "无点阵图",
    "src": "official",
    "days": 306,
    "endDays": 306
