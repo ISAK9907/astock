@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 build-worker.mjs 自动生成，请勿直接编辑。
 // 改判定逻辑请改 signal.mjs / global-quote.mjs；改 Worker 入口请改 worker/handler.js。
-// 生成时间：2026-11-13T15:47:52.254Z
-// 内联的状态文件：T=2026-11-12（generatedAt=2026-11-13T15:47:51.798Z）
+// 生成时间：2026-11-17T18:01:40.876Z
+// 内联的状态文件：T=2026-11-17（generatedAt=2026-11-17T17:06:58.720Z）
 
 // ===== signal.mjs =====
 // 盘前信号核心逻辑（被 build-dashboard / serve-dashboard / daily-update 共用）
@@ -276,7 +276,7 @@ function forecastGap(q) {
 
 
 // ===== signal-state.json（内联）=====
-const STATE = {"generatedAt":"2026-11-13T15:47:51.798Z","T":"2026-11-12","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-11-12","retT":-0.6741756807166488,"amtRatio":1.153664579710584,"close":3655.829},{"key":"szcz","name":"深证成指","date":"2026-11-12","retT":-1.683620965084609,"amtRatio":1.1932072879499667,"close":11197.977},{"key":"cyb","name":"创业板指","date":"2026-11-12","retT":-2.435317586983543,"amtRatio":1.1899920438996094,"close":2509.429},{"key":"hs300","name":"沪深300","date":"2026-11-12","retT":-0.7798397775699795,"amtRatio":1.1092228290251682,"close":4043.925}]};
+const STATE = {"generatedAt":"2026-11-17T17:06:58.720Z","T":"2026-11-17","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-11-17","retT":-0.4993657305756738,"amtRatio":0.8961787928184536,"close":3584.58},{"key":"szcz","name":"深证成指","date":"2026-11-17","retT":-0.48883243318074143,"amtRatio":0.8559404268488259,"close":10638.52},{"key":"cyb","name":"创业板指","date":"2026-11-17","retT":-1.1991275937276447,"amtRatio":0.8212649599594238,"close":2292.2},{"key":"hs300","name":"沪深300","date":"2026-11-17","retT":-0.08392381526710624,"amtRatio":0.8804677334920801,"close":3976.46},{"key":"csi2000","name":"中证2000","date":"2026-11-17","retT":-1.779761611304309,"amtRatio":0.8376196175262486,"close":2589.94}]};
 
 // ===== worker/handler.js =====
 // Cloudflare Worker 的 /signal 处理器 —— 从 serve-dashboard.mjs 原样搬过来。
