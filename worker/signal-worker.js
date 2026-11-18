@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 build-worker.mjs 自动生成，请勿直接编辑。
 // 改判定逻辑请改 signal.mjs / global-quote.mjs；改 Worker 入口请改 worker/handler.js。
-// 生成时间：2026-11-17T18:01:40.876Z
-// 内联的状态文件：T=2026-11-17（generatedAt=2026-11-17T17:06:58.720Z）
+// 生成时间：2026-11-18T16:49:38.537Z
+// 内联的状态文件：T=2026-11-18（generatedAt=2026-11-18T16:49:38.143Z）
 
 // ===== signal.mjs =====
 // 盘前信号核心逻辑（被 build-dashboard / serve-dashboard / daily-update 共用）
@@ -276,7 +276,7 @@ function forecastGap(q) {
 
 
 // ===== signal-state.json（内联）=====
-const STATE = {"generatedAt":"2026-11-17T17:06:58.720Z","T":"2026-11-17","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-11-17","retT":-0.4993657305756738,"amtRatio":0.8961787928184536,"close":3584.58},{"key":"szcz","name":"深证成指","date":"2026-11-17","retT":-0.48883243318074143,"amtRatio":0.8559404268488259,"close":10638.52},{"key":"cyb","name":"创业板指","date":"2026-11-17","retT":-1.1991275937276447,"amtRatio":0.8212649599594238,"close":2292.2},{"key":"hs300","name":"沪深300","date":"2026-11-17","retT":-0.08392381526710624,"amtRatio":0.8804677334920801,"close":3976.46},{"key":"csi2000","name":"中证2000","date":"2026-11-17","retT":-1.779761611304309,"amtRatio":0.8376196175262486,"close":2589.94}]};
+const STATE = {"generatedAt":"2026-11-18T16:49:38.143Z","T":"2026-11-18","thresholds":{"retWeak":-0.5,"retStrong":1,"amtLow":1,"amtHigh":1.15,"gap":1},"states":[{"key":"sh","name":"上证指数","date":"2026-11-18","retT":0.0907219255812386,"amtRatio":0.8444159951522141,"close":3587.832},{"key":"szcz","name":"深证成指","date":"2026-11-18","retT":0.19637129976726175,"amtRatio":0.8022172197182226,"close":10659.411},{"key":"cyb","name":"创业板指","date":"2026-11-18","retT":0.8472646365936809,"amtRatio":0.7496216326252653,"close":2311.621},{"key":"hs300","name":"沪深300","date":"2026-11-18","retT":0.18375640645196256,"amtRatio":0.837209714275929,"close":3983.767},{"key":"csi2000","name":"中证2000","date":"2026-11-18","retT":-1.0502173795532088,"amtRatio":0.8032799371368505,"close":2562.74}]};
 
 // ===== worker/handler.js =====
 // Cloudflare Worker 的 /signal 处理器 —— 从 serve-dashboard.mjs 原样搬过来。
