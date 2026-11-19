@@ -52,8 +52,24 @@ jobs:
           kind=$(grep -o '"kind":"[^"]*"' version.json 2>/dev/null | head -1 | cut -d'"' -f4)
           d_bj=$(date +%F); d_utc=$(date -u +%F)
           echo "version.json generatedAt=${stamp:-读取失败} kind=${kind:-无}  今天(北京)=$d_bj 今天(UTC)=$d_utc  force=${{ inputs.force }}"
+          # 盘后日更（kind=daily，本机 15:40 / 云端 15:50）跑过之后，绝不能再让「盘前更新」把
+          # 页面盖回去：盘前 build 的 date 是上一个交易日，会直接把当天的日更结果冲掉。
+          # 2026-10-30 就踩过这个坑 —— GitHub 的 schedule 延迟了 6 小时，本来 02:30Z 的盘前
+          # 一直到 08:52Z 才跑，正好在日更（07:43Z）之后，把页面日期写回了 10-28。
+          # 所以多两道闸：① 今天已经有 daily 构建 → 跳过；② 当前不在北京 06:00-11:59 → 跳过
+          #    （2026-11-19 又踩一次：GitHub 把 02:30Z 的盘前延迟到 10:39Z=18:39 才跑，
+          #     原来的「>=15 点跳过」本应挡住，但线上 workflow 还是没这道闸的旧版 —— 见下）
+          hour_bj=$(TZ=Asia/Shanghai date +%H)
+          is_daily_today=false
+          if [ "$kind" = 'daily' ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
+            is_daily_today=true
+          fi
           if [ '${{ inputs.force }}' = 'true' ]; then
             echo "fresh=false" >> "$GITHUB_OUTPUT"; echo '→ 手动指定 force，照常在云端运行'
+          elif [ "$is_daily_today" = 'true' ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 今天的盘后日更已经构建过，盘前兜底跳过（避免把页面日期写回上一交易日）'
+          elif [ -n "$hour_bj" ] && { [ "$hour_bj" -lt 6 ] || [ "$hour_bj" -ge 12 ]; }; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"; echo "→ 现在北京时间 ${hour_bj} 点，不在盘前时段(06:00-11:59)，跳过兜底"
           elif [ "$kind" = 'premarket' ] && { [ "${stamp:0:10}" = "$d_bj" ] || [ "${stamp:0:10}" = "$d_utc" ]; }; then
             echo "fresh=true" >> "$GITHUB_OUTPUT"; echo '→ 本机今天的盘前已经跑过，云端跳过'
           else
